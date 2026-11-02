@@ -1,0 +1,14 @@
+# Private: sign-in accounts (paste into Streamlit Cloud > Settings > Secrets instead)
+.streamlit/secrets.toml
+
+# Local database and backups (the app rebuilds data/medstock.db from the CSVs)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/recovery-*/
+
+# Python / tools
+.venv/
+__pycache__/
+.pytest_cache/
+.DS_Store

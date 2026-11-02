@@ -1,0 +1,31 @@
+item_id,name,category,unit,unit_cost,ordering_cost,holding_rate,ved,shelf_life_days,supplier
+MED001,Acetaminophen 500mg tab,Medicine,bottle/100,5.0,30,0.25,E,1095,Pacific Pharma Supply
+MED002,Acetaminophen IV 1g vial,Medicine,vial,9.0,30,0.25,V,730,Pacific Pharma Supply
+MED003,Amoxicillin 500mg cap,Medicine,bottle/100,12.0,30,0.25,E,730,Pacific Pharma Supply
+MED004,Ceftriaxone 1g vial,Medicine,vial,2.5,30,0.25,V,730,Pacific Pharma Supply
+MED005,Meropenem 1g vial,Medicine,vial,15.0,60,0.25,V,730,Overseas Medical Imports
+MED006,Pantoprazole IV 40mg vial,Medicine,vial,6.0,30,0.25,E,730,Pacific Pharma Supply
+MED007,Insulin regular 10mL vial,Medicine,vial,35.0,40,0.25,V,365,Northwest Medical Distributors
+MED008,Epinephrine 1mg/10mL syringe,Medicine,syringe,15.0,30,0.25,V,545,Northwest Medical Distributors
+MED009,Oxytocin 10 units vial,Medicine,vial,2.0,30,0.25,V,365,Northwest Medical Distributors
+MED010,"Heparin 5,000 units vial",Medicine,vial,3.0,40,0.25,V,730,Overseas Medical Imports
+MED011,Albumin 25% 50mL,Medicine,bottle,60.0,60,0.25,E,1095,Overseas Medical Imports
+MED012,Ondansetron 4mg vial,Medicine,vial,1.0,30,0.25,D,730,Pacific Pharma Supply
+IVF001,Sodium chloride 0.9% 1L,IV Fluids,bag,3.0,50,0.25,V,730,Cascade Surgical Supply
+IVF002,Lactated Ringer's 1L,IV Fluids,bag,3.5,50,0.25,V,730,Cascade Surgical Supply
+IVF003,Dextrose 5% 1L,IV Fluids,bag,3.5,50,0.25,E,730,Cascade Surgical Supply
+CON001,Syringe 5mL,Consumables,box/100,15.0,25,0.25,V,1825,Northwest Medical Distributors
+CON002,IV catheter 22G,Consumables,box/50,90.0,25,0.25,V,1825,Northwest Medical Distributors
+CON003,IV administration set,Consumables,each,4.0,25,0.25,V,1825,Northwest Medical Distributors
+CON004,Nitrile exam gloves (M),Consumables,box/100,8.0,25,0.25,E,1095,Overseas Medical Imports
+CON005,Surgical mask,Consumables,box/50,6.0,25,0.25,D,1095,Northwest Medical Distributors
+CON006,N95 respirator,Consumables,box/20,25.0,25,0.25,E,1095,Overseas Medical Imports
+CON007,Sterile gauze 4x4,Consumables,pack/100,10.0,25,0.25,E,1825,Cascade Surgical Supply
+CON008,Foley catheter tray 16Fr,Consumables,each,12.0,25,0.25,E,1825,Cascade Surgical Supply
+CON009,Absorbable suture 2-0,Consumables,box/12,120.0,30,0.25,E,1825,Overseas Medical Imports
+CON010,Isopropyl alcohol 70% 1 pint,Consumables,bottle,3.0,25,0.25,D,1095,Northwest Medical Distributors
+CON011,Cotton balls 300ct,Consumables,bag,4.0,25,0.25,D,1825,Northwest Medical Distributors
+CON012,Medical tape 1in,Consumables,roll,2.0,25,0.25,D,1825,Northwest Medical Distributors
+LAB001,Influenza A/B rapid test,Laboratory,test,15.0,30,0.25,V,540,Pacific Pharma Supply
+LAB002,Glucose test strips,Laboratory,box/50,25.0,30,0.25,E,540,Pacific Pharma Supply
+LAB003,Blood collection bag 450mL,Laboratory,bag,20.0,30,0.25,V,1095,Cascade Surgical Supply
