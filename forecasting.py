@@ -1,5 +1,5 @@
 """
-forecasting.py — demand forecasting with the methods from the course
+forecasting.py: Demand forecasting with the methods from the course
 (Forecasting chapter, slides 259-306).
 
 We forecast a MONTHLY series: the average daily usage in each month

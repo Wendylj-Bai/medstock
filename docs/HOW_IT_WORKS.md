@@ -41,7 +41,7 @@ lead-time history. The plan is recalculated on every page load.
 | `forecasting.py` | Moving average, exponential smoothing, Holt, Winters; accuracy measures; backtest and method selection |
 | `planning.py` | Combines data and formulas into one decision row per item; expiry projection |
 | `db.py` | SQLite storage, the clock, and the rules for every stock movement |
-| `purchasing.py` | Vendor master, purchase orders (draft → sent → confirmed → shipped → arrived → received), vendor simulation, scorecard, printable PO |
+| `purchasing.py` | Vendor master, purchase orders (draft > sent > confirmed > shipped > arrived > received), vendor simulation, scorecard, printable PO |
 | `simulation.py` | Moves the clock forward: daily demand, receipts, automatic reordering, random events |
 | `events.py` | Lot recalls and vendor disruptions (with automatic switch to backup vendors) |
 | `kpis.py` | Key performance indicators and weekly trends, rebuilt from the ledger |
@@ -79,8 +79,8 @@ Every write runs inside one SQLite transaction (`with conn:`), so a movement is 
 
 ### Step 1: Demand (`forecasting.py`, slides 259-306)
 
-1. Daily usage → **monthly series of average daily usage**, complete months only (a half month would look like a drop).
-2. Four methods, implemented exactly as on the slides, with error **e = F − D** (slide 270):
+1. Daily usage is turned into a **monthly series of average daily usage**, complete months only (a half month would look like a drop).
+2. Four methods, implemented as on the slides, with error **e = F − D** (slide 270):
 
 | Method | Equations | Slides |
 |---|---|---|
@@ -163,7 +163,7 @@ changes on reload):
 | Vendor backorder | with probability `short_prob` (3-12%) a line is confirmed at 40-90% |
 | ASN lot / expiry | expiry = arrival + shelf life × U(0.6, 0.95); 8% of lots are short-dated (×U(0.15, 0.35)) |
 
-`stage(header, today)` then compares today with these dates: SENT → CONFIRMED → SHIPPED → ARRIVED.
+`stage(header, today)` then compares today with these dates: SENT > CONFIRMED > SHIPPED > ARRIVED.
 The user sees only what has happened by today (confirmed quantities after the acknowledgement,
 lots after the ASN). `db.receive` refuses a line whose PO has not arrived.
 
@@ -189,9 +189,9 @@ on-time share (lead time ≤ quoted) and fill rate (received ÷ ordered, POs fro
 
 The forecast is computed once and recomputed when a month is completed. A 30-day run takes about 7 seconds.
 
-**Why it is useful:** it closes the loop. The (Q, R) policy from slides 197-204 is no longer just a
-number: you see the fill rate it achieves, what late vendors and backorders do to it, and what happens
-when drafts sit unapproved.
+The point of the clock is to test the (Q, R) policy from slides 197-204 instead of only calculating
+it. You can see the fill rate it actually achieves, how late vendors and backorders hurt it, and what
+happens when drafts sit unapproved.
 
 ---
 
@@ -264,7 +264,7 @@ Where the slides show no final answer, the expected values were computed by hand
 
 ## 8. Sample data
 `generate_sample_data.py` creates a fictional US hospital: 30 items in USD, 4 fictional suppliers
-(lead times 2 to 21 days), 3 years of daily usage (Nov 2023 – Oct 2026) with weekend dips, +4% growth per year,
+(lead times 2 to 21 days), 3 years of daily usage (Nov 2023 to Oct 2026) with weekend dips, +4% growth per year,
 a flu season with a different severity each year, a summer trauma peak for some items, and a few
 deliberately expired or short-dated lots. The random seed is fixed, so the data is reproducible.
 

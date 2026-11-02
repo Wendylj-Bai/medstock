@@ -1,5 +1,5 @@
 """
-db.py — saves everything in one SQLite file (data/medstock.db).
+db.py: Saves everything in one SQLite file (data/medstock.db).
 
 SQLite is a full database stored as a single file. No server, nothing to install.
 

@@ -1,5 +1,5 @@
 """
-generate_sample_data.py — creates a realistic (but fake) US hospital supply dataset.
+generate_sample_data.py: Creates a realistic (but fake) US hospital supply dataset.
 
 Run once:   .venv/bin/python generate_sample_data.py
 It writes four CSV files into the data/ folder:

@@ -1,5 +1,5 @@
 """
-inventory_math.py — the "brain" of the app.
+inventory_math.py: The "brain" of the app.
 
 Every formula here comes from the Inventory Management chapter of the
 course slides (pp. 175-232). Slide numbers are noted on each function so
@@ -108,7 +108,7 @@ def expected_backorders_per_cycle(z, sigma):
 
 
 def fill_rate(z, sigma, Q):
-    """Fill rate = 1 - E(b)/Q  — share of demand served straight from the shelf."""
+    """Fill rate = 1 - E(b)/Q, the share of demand served straight from the shelf."""
     return 1 - expected_backorders_per_cycle(z, sigma) / Q
 
 

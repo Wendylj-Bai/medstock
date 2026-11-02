@@ -1,5 +1,5 @@
 """
-simulation.py — move the clock forward and let the hospital "live".
+simulation.py: Move the clock forward and let the hospital "live".
 
 Each simulated day, in this order:
   0. Vendor news: orders rejected by a disrupted vendor are closed. With random events on,

@@ -61,13 +61,12 @@ def test_home_has_brand_headline_sections_and_caption(monkeypatch):
     at = AppTest.from_file(str(APP), default_timeout=180)
     at.run()
     html = "\n".join(h.value for h in at.html)
-    for text in ("MedStock", "Supply chain / Portfolio project",
-                 "Better inventory decisions. Better prepared care.",
-                 "The problem", "What MedStock does", "From demand to decision",
-                 "Built to make the reasoning visible", "Project scope"):
+    for text in ("MedStock", "Supply chain portfolio project",
+                 "Why hospital inventory is hard", "What it does", "How a simulated day works",
+                 "What came from class and what I added", "Built with", "Scope and limits"):
         assert text in html
     caption = " | ".join(c.value for c in at.caption)
-    assert "requires sign-in" in caption
+    assert "needs a sign-in" in caption
 
 
 def test_home_has_no_tabs_or_stock_controls(monkeypatch):

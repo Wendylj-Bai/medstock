@@ -1,5 +1,5 @@
 """
-kpis.py — key performance indicators: is inventory management working, and is it getting better?
+kpis.py: Key performance indicators: is inventory management working, and is it getting better?
 
 Service (are patients getting what they need?)
   fill rate          units served ÷ units requested            (target: 98%+, higher for Vital items)

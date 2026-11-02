@@ -192,7 +192,7 @@ def test_dashboard_reorder_status_is_first_column_and_ok_can_go_on_top(app):
     assert list(table().columns[:2]) == ["status", "availability_risk"]
     ranks = table()["status"].map({"🔴 Order now": 0, "🟡 Order soon": 1, "🟢 OK": 2}).tolist()
     assert ranks == sorted(ranks)                                 # default: 🔴 first
-    at.selectbox(key="dash_sort").set_value("Reorder status (🟢 → 🔴)").run()
+    at.selectbox(key="dash_sort").set_value("Reorder status (green first)").run()
     ranks = table()["status"].map({"🔴 Order now": 0, "🟡 Order soon": 1, "🟢 OK": 2}).tolist()
     assert ranks == sorted(ranks, reverse=True)                   # 🟢 OK on top
     assert "🟢 OK" not in set(table()["availability_risk"])       # the two OKs no longer look alike

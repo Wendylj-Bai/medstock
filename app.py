@@ -1,5 +1,5 @@
 """
-app.py — MedStock: hospital supply inventory planner (Streamlit web app).
+app.py: MedStock: hospital supply inventory planner (Streamlit web app).
 
 Run:   .venv/bin/streamlit run app.py
 Then open the link it prints (usually http://localhost:8501).
@@ -184,11 +184,11 @@ stockouts = pd.read_sql("SELECT s.*, i.name, i.ved, i.unit FROM stockouts s JOIN
 # What happened during the last simulation run
 rep = st.session_state.get("sim_report")
 if rep:
-    with st.expander(f"🕒 Simulation report: {rep['start']:%b %d} → {rep['end']:%b %d} ({rep['days']} days)",
+    with st.expander(f"🕒 Simulation report: {rep['start']:%b %d} to {rep['end']:%b %d} ({rep['days']} days)",
                      expanded=True):
         m = st.columns(5)
         m[0].metric("Units requested", f"{rep['demand']:,}")
-        m[1].metric("Filled from the shelf", f"{rep['issued'] / rep['demand']:.1%}" if rep["demand"] else "—",
+        m[1].metric("Filled from the shelf", f"{rep['issued'] / rep['demand']:.1%}" if rep["demand"] else "n/a",
                     help="Share of requested units that were available (the fill rate, slides 205-207).")
         so = pd.DataFrame(rep["stockouts"])
         m[2].metric("Stockout events", len(so),
@@ -217,7 +217,7 @@ if rep:
      "⏳ Expiry", "🔎 Item detail", "📜 History", "🅰️ ABC-VED analysis", "🧮 Calculators", "📖 Help"])
 
 # ---------------------------------------------------------------------------
-# Tab: Help — the user guide (docs/USER_GUIDE.md), shown inside the app
+# Help tab: the user guide (docs/USER_GUIDE.md), shown inside the app
 # ---------------------------------------------------------------------------
 with tab_help:
     guide = Path(__file__).parent / "docs" / "USER_GUIDE.md"
@@ -228,7 +228,7 @@ with tab_help:
     st.caption("Technical details (formulas, data model, design decisions): docs/HOW_IT_WORKS.md")
 
 # ---------------------------------------------------------------------------
-# Tab 1: Dashboard — what needs ordering today?
+# Dashboard tab: what needs ordering today?
 # ---------------------------------------------------------------------------
 with tab_dash:
     st.header("Today's reorder dashboard")
@@ -295,8 +295,8 @@ with tab_dash:
     STATUSES = ["🔴 Order now", "🟡 Order soon", "🟢 OK"]
     RISKS = ["🔴 No usable stock", "🔴 Shortage risk", "🟡 Shortage watch", "🟢 Enough stock"]
     VED_NAMES = {"V": "V - Vital", "E": "E - Essential", "D": "D - Desirable"}
-    SORTS = {"Reorder status (🔴 → 🟢)": ["status_rank", "ved_rank", "days_of_supply"],
-             "Reorder status (🟢 → 🔴)": ["status_rank_desc", "ved_rank", "days_of_supply"],
+    SORTS = {"Reorder status (red first)": ["status_rank", "ved_rank", "days_of_supply"],
+             "Reorder status (green first)": ["status_rank_desc", "ved_rank", "days_of_supply"],
              "Availability risk (worst first)": ["risk_rank", "ved_rank", "days_of_supply"],
              "Criticality (Vital first)": ["ved_rank", "status_rank", "days_of_supply"],
              "Days of supply (lowest first)": ["days_of_supply", "ved_rank"],
@@ -389,11 +389,11 @@ with tab_dash:
 
     st.subheader("Measured fill rate from logged requests")
     st.caption("These are ACTUAL requests logged in this app (manual ward issues and simulated demand) since it "
-               "was set up — not synthetic history. The table shows what was served vs. what was short. Compare "
+               "was set up, not synthetic history. The table shows what was served vs. what was short. Compare "
                "it with the *predicted* fill rate shown in 🔎 Item detail (from the service level).")
     requests = pd.read_sql("SELECT * FROM demand_requests", conn)
     if requests.empty:
-        st.info("No ward requests have been logged yet. Record them in 📦 Stock movements → Issue to ward, or run "
+        st.info("No ward requests have been logged yet. Record them in 📦 Stock movements > Issue to ward, or run "
                 "the simulation; every request (served or short) is counted here.")
     else:
         measured = requests.groupby("item_id").agg(requests=("requested", "sum"),
@@ -412,7 +412,7 @@ with tab_dash:
                   help="Served ÷ requested across all logged requests.")
 
 # ---------------------------------------------------------------------------
-# Tab: Stock movements — record what physically happens in the storeroom
+# Stock movements tab: record what physically happens in the storeroom
 # ---------------------------------------------------------------------------
 def run(action, *args, **kwargs):
     """Call a db function; show a friendly error instead of crashing."""
@@ -432,10 +432,10 @@ def item_row(item_id):
 
 
 # ---------------------------------------------------------------------------
-# Tab: KPIs — is inventory management working, and is it getting better?
+# KPIs tab: is inventory management working, and is it getting better?
 # ---------------------------------------------------------------------------
 def pct(x, digits=1):
-    return "—" if x is None or pd.isna(x) else f"{x:.{digits}%}"
+    return "n/a" if x is None or pd.isna(x) else f"{x:.{digits}%}"
 
 
 with tab_kpi:
@@ -444,7 +444,7 @@ with tab_kpi:
     period = st.radio("Period", list(PERIODS), index=1, horizontal=True, key="kpi_period")
     k_start = TODAY - pd.Timedelta(days=PERIODS[period] - 1)
     k = kpis.compute(conn, k_start, TODAY)
-    st.caption(f"{k_start:%b %d, %Y} → {TODAY:%b %d, %Y}. Stockouts are only recorded since the app started "
+    st.caption(f"{k_start:%b %d, %Y} to {TODAY:%b %d, %Y}. Stockouts are only recorded since the app started "
                "logging requests, and inventory KPIs start when the stock ledger starts"
                + (f" ({k['inventory_since']:%b %d, %Y})." if k["inventory_since"] else "."))
 
@@ -457,11 +457,11 @@ with tab_kpi:
 
     st.subheader("Money: how much is tied up, and how much is lost?")
     c = st.columns(4)
-    c[0].metric("Average inventory", f"${k['avg_inventory']:,.0f}" if k["avg_inventory"] else "—",
+    c[0].metric("Average inventory", f"${k['avg_inventory']:,.0f}" if k["avg_inventory"] else "n/a",
                 help="Average dollar value on the shelf over the period")
-    c[1].metric("Inventory turns (per year)", f"{k['turns']:.1f}" if k["turns"] else "—",
+    c[1].metric("Inventory turns (per year)", f"{k['turns']:.1f}" if k["turns"] else "n/a",
                 help="Yearly value issued ÷ average inventory. Higher = leaner. Hospital supplies often run 8-12.")
-    c[2].metric("Days on hand", f"{k['days_on_hand']:.0f}" if k["days_on_hand"] else "—",
+    c[2].metric("Days on hand", f"{k['days_on_hand']:.0f}" if k["days_on_hand"] else "n/a",
                 help="How many days the average stock would last at the current usage rate")
     c[3].metric("Waste (expiry, damage, recalls)", f"${k['waste_total']:,.0f}",
                 help="Written-off value plus stock pulled by recalls")
@@ -506,7 +506,7 @@ with tab_kpi:
                    "safety stock manages.")
 
 # ---------------------------------------------------------------------------
-# Tab: Recalls & disruptions — when the supply chain goes wrong
+# Recalls & disruptions tab: when the supply chain goes wrong
 # ---------------------------------------------------------------------------
 with tab_risk:
     st.header("Recalls & vendor disruptions")
@@ -549,7 +549,7 @@ with tab_risk:
                                     "value_removed": st.column_config.NumberColumn("Value lost", format="$%,.0f"),
                                     "wards": "Already issued to (notify)", "origin": "Source"})
         st.caption("What happens next: usable stock dropped, so the item may now be 🔴 on the 📋 Dashboard and "
-                   "get reordered. Full movement history of any lot: 📜 History → Lot trace.")
+                   "get reordered. Full movement history of any lot: 📜 History > Lot trace.")
 
     st.subheader("🏭 Vendor disruptions")
     st.markdown("A vendor cannot supply for a while (plant shutdown, shortage, storm, cyberattack). Orders it "
@@ -581,14 +581,14 @@ with tab_risk:
         for o in active_outages.itertuples():
             affected = plan[plan["supplier"] == o.supplier]
             st.markdown(f"**{o.supplier}**: {len(affected)} item(s) switch to their backup vendor: " + ", ".join(
-                f"{r.name} → {r.backup_supplier}" for r in affected.itertuples()))
+                f"{r.name} (now from {r.backup_supplier})" for r in affected.itertuples()))
             if st.button(f"✅ {o.supplier} is supplying again", key=f"end_outage_{o.outage_id}"):
                 _, err = run(events.end_outage, o.supplier)
                 if not err:
                     done(f"{o.supplier} is back. New orders go to it again.")
 
 # ---------------------------------------------------------------------------
-# Tab: Purchasing — vendor purchase orders, from draft to delivery (vendors are simulated)
+# Purchasing tab: vendor purchase orders, from draft to delivery (vendors are simulated)
 # ---------------------------------------------------------------------------
 def stage_bar(current):
     """📝 Draft → 📤 Sent → … with the current stage in bold."""
@@ -685,7 +685,7 @@ with tab_buy:
                     a.markdown("**Vendor**  \n" + vendor_card(h["supplier"]))
                     b.markdown(f"**Ship to**  \n{pu.HOSPITAL['name']}  \n{pu.HOSPITAL['dept']}  \n{pu.HOSPITAL['address']}")
                     b.markdown(f"PO **{order_no}** · created {h['created_date']} by {h['origin']}  \n"
-                               f"Need by: {h['need_by'] or '—'}  \nNotes: {h['notes'] or '—'}")
+                               f"Need by: {h['need_by'] or 'n/a'}  \nNotes: {h['notes'] or 'n/a'}")
 
                     if current == "DRAFT":
                         if pu.active_outage(conn, h["supplier"], TODAY):
@@ -905,7 +905,7 @@ with tab_move:
                 pick_text = ", ".join(f"lot {no} × {q}" for no, q in res["picks"])
                 if res["short"]:
                     st.error(f"Only **{res['filled']:,} of {res['requested']:,} {r['unit']}** could be served to "
-                             f"{ward} — {res['short']:,} was **not available** and is logged as a stockout "
+                             f"{ward}. {res['short']:,} was **not available** and is logged as a stockout "
                              f"(and counts as demand). Take from shelf: {pick_text or 'nothing'}.")
                 else:
                     left = r["usable"] - qty
@@ -1044,7 +1044,7 @@ with tab_move:
         st.caption("Details, vendor messages and tracking: 🛒 Purchasing.")
 
 # ---------------------------------------------------------------------------
-# Tab: Forecast — what will demand be, and how good is each method?
+# Forecast tab: what will demand be, and how good is each method?
 # ---------------------------------------------------------------------------
 with tab_fc:
     st.header("Demand forecast")
@@ -1080,7 +1080,7 @@ happened. **Auto** uses the method with the lowest **MAD** for each item.
             "peak_rate": st.column_config.NumberColumn("Peak (per day)", format="%.1f"),
         })
     if outlook.empty:
-        st.caption("Methods chosen by Auto: —")
+        st.caption("Methods chosen by Auto: none yet")
     else:
         st.caption("Methods chosen by Auto: " + ", ".join(
             f"{m} × {n}" for m, n in outlook["method"].value_counts().items()))
@@ -1134,7 +1134,7 @@ forecast **cannot** predict. Predictable swings like flu season are handled by t
 """)
 
 # ---------------------------------------------------------------------------
-# Tab: Expiry — what is expiring, and what will we fail to use in time?
+# Expiry tab: what is expiring, and what will we fail to use in time?
 # ---------------------------------------------------------------------------
 LOT_COLUMNS = {
     "lot_no": "Lot", "expiry_date": st.column_config.DateColumn("Expires"),
@@ -1197,7 +1197,7 @@ newsvendor trade-off (Co, slides 221-224): too much stock of a short-dated item 
                  hide_index=True, width="stretch", column_config=LOT_COLUMNS)
 
 # ---------------------------------------------------------------------------
-# Tab: History — the ledger explains every change in stock
+# History tab: the ledger explains every change in stock
 # ---------------------------------------------------------------------------
 with tab_hist:
     st.header("Transaction history")
@@ -1206,7 +1206,7 @@ with tab_hist:
     c1, c2, c3 = st.columns(3)
     c1.metric("Movements recorded", f"{len(log):,}")
     c2.metric("Cycle counts", n_counts)
-    c3.metric("Record accuracy", "—" if acc is None else f"{acc:.0%}",
+    c3.metric("Record accuracy", "n/a" if acc is None else f"{acc:.0%}",
               help="Share of counts where the system matched the shelf. Good practice: 97% or more.")
     if log.empty:
         st.info("No movements yet. Record one in 📦 Stock movements.")
@@ -1238,7 +1238,7 @@ with tab_hist:
                 st.write("Issued to: " + ", ".join(f"**{w}** ({q})" for w, q in by_ward.items()))
 
 # ---------------------------------------------------------------------------
-# Tab: Item detail — show the math for one item, step by step
+# Item detail tab: the math for one item, step by step
 # ---------------------------------------------------------------------------
 with tab_item:
     labels = plan["item_id"] + " · " + plan["name"]
@@ -1276,7 +1276,7 @@ with tab_item:
 - One order lasts about **{r['cycle_days']:.0f} days**
 
 **Step 3: Safety stock and reorder point** (slides 200-201)
-- Service level {r['service_level']:.1%} → z = **{r['z']:.3f}**
+- Service level {r['service_level']:.1%} gives z = **{r['z']:.3f}**
 - DDLT = d̄ × L̄ = {r['d']:.2f} × {r['L']:.1f} = **{r['ddlt']:.1f}**
 - σ_DDLT = √(L̄σd² + d̄²σL²) = √({r['L']:.1f}×{r['sd']:.2f}² + {r['d']:.2f}²×{r['sL']:.1f}²) = **{r['sigma_ddlt']:.1f}**
 - SS = z × σ_DDLT = **{r['safety_stock']:.1f}**
@@ -1289,7 +1289,7 @@ with tab_item:
     if r["availability_risk"] != "🟢 OK" or r["unknown_eta"]:
         short_txt = ""
         if not pd.isna(r["shortage_date"]):
-            short_txt = f" — first day stock runs out: **{pd.Timestamp(r['shortage_date']):%b %d}**, " \
+            short_txt = f". First day stock runs out: **{pd.Timestamp(r['shortage_date']):%b %d}**, " \
                         f"projected **{r['projected_short_units']:,.0f} units short** over the next 90 days."
         eta_txt = " ⚠️ One of the open orders has **no reliable arrival date**." if r["unknown_eta"] else ""
         st.warning(f"**Availability projection:** {r['availability_risk']}{short_txt}{eta_txt}")
@@ -1347,7 +1347,7 @@ with tab_item:
                      hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------------------
-# Tab 3: ABC-VED — where should management attention go?
+# ABC-VED tab: where should management attention go?
 # ---------------------------------------------------------------------------
 with tab_abc:
     st.header("ABC-VED analysis")
@@ -1389,7 +1389,7 @@ Hospitals combine both. A cheap item like epinephrine is class **C** but **Vital
         "share": st.column_config.NumberColumn("Share", format="percent")})
 
 # ---------------------------------------------------------------------------
-# Tab 4: Calculators — free-form what-if tools (defaults = slide examples)
+# Calculators tab: free-form what-if tools (defaults are the slide examples)
 # ---------------------------------------------------------------------------
 with tab_calc:
     st.header("Calculators")

@@ -23,7 +23,7 @@ Then open **http://localhost:8501** in your browser. Leave the terminal window o
 
 ---
 
-## 2. The screen at a glance
+## 2. What's on the screen
 
 | Area | What it is for |
 |---|---|
@@ -130,7 +130,7 @@ The four controls above the table work together, and every filter is strict (an 
 | **Reorder status** | 🔴 / 🟡 / 🟢 from the reorder point: is it time to place an order? |
 | **Availability** | Will usable stock last the next 90 days? An item can be 🔴 here even with an order on the way, if that order arrives too late. |
 | **Criticality** | V - Vital, E - Essential, D - Desirable |
-| **Sort by** | Reorder status 🔴 → 🟢 (default) or 🟢 → 🔴, availability risk, Vital first, lowest days of supply, or highest order value |
+| **Sort by** | Reorder status, red first (default) or green first, availability risk, Vital first, lowest days of supply, or highest order value |
 
 The first column is **Reorder status** and the second is **Availability**, in the same order as the
 filters. Availability says 🟢 **Enough stock** (not "OK") so the two columns are easy to tell apart.
@@ -165,7 +165,7 @@ drafts in 🛒 Purchasing (6.3). Only then do the items count as *on order* and 
 ## 6. How to …
 
 ### 6.1 Issue stock to a department
-1. 📦 **Stock movements** → **📤 Issue to ward**.
+1. 📦 **Stock movements** > **📤 Issue to ward**.
 2. Choose the **Item**. The blue box shows how many usable units you have.
 3. Choose the **Department** and **Quantity**. Change the date only if you are entering yesterday's issues.
 4. Click **Issue stock**.
@@ -178,11 +178,11 @@ drafts in 🛒 Purchasing (6.3). Only then do the items count as *on order* and 
 A delivery can be received once it has **arrived at the dock** (📦 banner on the Dashboard, or
 status 📦 *Arrived at dock* in 🛒 Purchasing).
 
-**Quick way (everything as the vendor said):** 🛒 **Purchasing** → open the PO →
+**Quick way (everything as the vendor said):** 🛒 **Purchasing** > open the PO >
 **📥 Receive whole shipment (as per ASN)**. Every line goes on the shelf with the lot number and expiry
 date from the vendor's ship notice.
 
-**Line by line (to check the boxes):** 📦 **Stock movements** → **📥 Receive delivery**.
+**Line by line (to check the boxes):** 📦 **Stock movements** > **📥 Receive delivery**.
 1. Choose the **Delivery line**.
 2. Quantity, **lot number** and **expiry date** are pre-filled from the ship notice. Change them if the boxes say
    something else (e.g. a box is missing). Both lot number and expiry date are required.
@@ -195,7 +195,7 @@ MedStock records the real delivery time, which makes future reorder points more 
 > A delivery that is already expired is rejected. Do not accept it; return it to the vendor.
 
 ### 6.3 Review, approve and send a purchase order
-1. 🛒 **Purchasing** → **📄 Purchase orders** → choose the PO (drafts say *📝 Draft*).
+1. 🛒 **Purchasing** > **📄 Purchase orders** > choose the PO (drafts say *📝 Draft*).
 2. You see the PO the way the vendor will: vendor address and contact, ship-to address, payment terms,
    the lines with quantity and price, freight and total.
 3. Change quantities if needed (0 removes a line), add other items from the same vendor, set the
@@ -204,27 +204,27 @@ MedStock records the real delivery time, which makes future reorder points more 
 5. Click **✅ Approve & send to vendor**. (Or **💾 Save changes** to keep it as a draft, or **🗑️ Delete draft**.)
 6. **⬇️ Download PO document** gives a printable PO (open it in your browser, print or save as PDF).
 
-**To order something MedStock did not suggest:** 🛒 Purchasing → **➕ New purchase order** → choose the vendor.
+**To order something MedStock did not suggest:** 🛒 Purchasing > **➕ New purchase order** > choose the vendor.
 Every item from that vendor is listed with its status and a *Suggested* quantity. Type the quantities you
 want under **Order qty**, then **Approve & send** or **Save as draft**.
 
 ### 6.4 Follow an order and cancel it
 Open the PO in 🛒 Purchasing. The status bar shows where it is:
 
-📝 Draft → 📤 Sent → ✔️ Confirmed → 🚚 Shipped → 📦 Arrived at dock → ✅ Received
+📝 Draft > 📤 Sent > ✔️ Confirmed > 🚚 Shipped > 📦 Arrived at dock > ✅ Received
 
 Under **Vendor messages** you see what the vendor has told you so far: the acknowledgement (and any
 **vendor backorder**), the shipment with tracking number, and the delivery (on time or late).
 **❌ Cancel order** is possible until the vendor ships.
 
 ### 6.5 Write off stock (expired, damaged, recalled, lost)
-- **One lot:** 📦 **Stock movements** → **🗑️ Write-off** → choose the item and the **lot** → reason → quantity → **Write off**.
-- **All expired stock at once:** ⏳ **Expiry** tab → **🗑️ Write off all expired lots**.
+- **One lot:** 📦 **Stock movements** > **🗑️ Write-off** > choose the item and the **lot** > reason > quantity > **Write off**.
+- **All expired stock at once:** ⏳ **Expiry** tab > **🗑️ Write off all expired lots**.
 
 Write-offs are *not* counted as demand, so they do not make the forecast think the item is busier.
 
 ### 6.6 Count stock (cycle count)
-1. 📦 **Stock movements** → **🔢 Cycle count**.
+1. 📦 **Stock movements** > **🔢 Cycle count**.
 2. Choose the item and the **lot**.
 3. Count the boxes of that lot on the shelf and enter the number. The system quantity is hidden on purpose,
    so the count is not influenced by it (a *blind count*).
@@ -233,7 +233,7 @@ Write-offs are *not* counted as demand, so they do not make the forecast think t
 The **Record accuracy** number in 📜 History shows how often the counts matched. Aim for 97% or more.
 
 ### 6.7 Handle a recall
-1. 🚨 **Recalls & disruptions** → **Product recalls**.
+1. 🚨 **Recalls & disruptions** > **Product recalls**.
 2. Choose the lot from the recall notice, its **class** and the reason, then **🚨 Issue recall for this lot**.
    (Or press **🎲 Simulate a random manufacturer recall** to practice.)
 3. MedStock then:
@@ -243,11 +243,11 @@ The **Record accuracy** number in 📜 History shows how often the counts matche
 4. Usable stock has dropped, so the item may turn 🔴 on the Dashboard. Order a replacement as usual.
 
 Recall classes (FDA): **I** could cause serious harm, **II** temporary or reversible harm, **III** unlikely to
-cause harm (for example a labeling error). Every movement of any lot: 📜 **History** → **🔍 Lot trace**.
+cause harm (for example a labeling error). Every movement of any lot: 📜 **History** > **🔍 Lot trace**.
 
 ### 6.8 When a vendor cannot supply (disruption)
-Every item has a **primary** vendor and a **backup** vendor (shown in 🛒 Purchasing → 🏢 Vendors).
-1. 🚨 **Recalls & disruptions** → **Vendor disruptions**: choose the vendor, how many days, and why, then
+Every item has a **primary** vendor and a **backup** vendor (shown in 🛒 Purchasing > 🏢 Vendors).
+1. 🚨 **Recalls & disruptions** > **Vendor disruptions**: choose the vendor, how many days, and why, then
    **🏭 Start disruption** (or **🎲 Simulate a random disruption**).
 2. While it lasts:
    - orders that vendor receives are **rejected** at acknowledgement (you see ❌ in its vendor messages), and
@@ -258,7 +258,7 @@ Every item has a **primary** vendor and a **backup** vendor (shown in 🛒 Purch
 3. Press **✅ … is supplying again** to end it early. Ordering then goes back to the primary vendor.
 
 ### 6.9 Check how well inventory is managed (KPIs)
-📊 **KPIs** → choose the period (30, 90 or 365 days).
+📊 **KPIs** > choose the period (30, 90 or 365 days).
 
 | KPI | Meaning | Good direction |
 |---|---|---|
@@ -274,10 +274,10 @@ Every item has a **primary** vendor and a **backup** vendor (shown in 🛒 Purch
 Fill rate and inventory value usually move in opposite directions: that trade-off is what safety stock manages.
 
 ### 6.10 Export the history
-📜 **History** → filter by type or item if you like → **⬇️ Download as CSV** (opens in Excel).
+📜 **History** > filter by type or item if you like > **⬇️ Download as CSV** (opens in Excel).
 
 ### 6.11 See why an item has the reorder point it has
-🔎 **Item detail** → choose the item → open **📐 Show the calculation**. Every number is shown step by step.
+🔎 **Item detail** > choose the item > open **📐 Show the calculation**. Every number is shown step by step.
 
 ---
 
@@ -301,7 +301,7 @@ After each run a **Simulation report** shows units requested, the share filled f
 | **Automatic reordering: Off** | You order yourself (the default) |
 | **Create drafts for approval** | Every evening MedStock drafts POs for 🔴 items. They wait for you. This is how most hospital systems work. |
 | **Fully automatic (send POs)** | MedStock drafts *and sends* the POs. Hospitals do this for low-risk, high-volume items. |
-| **Auto-receive deliveries** | Receive deliveries exactly as the ship notice says. Turn off to receive them yourself. |
+| **Auto-receive deliveries** | Receive deliveries as the ship notice lists them. Turn off to receive them yourself. |
 | **Random events** | Each simulated day there is a small chance that a vendor cannot supply for 1-4 weeks (about every 6 weeks), or that a lot on your shelf is recalled (about every 6 weeks). Off by default. |
 | **🔄 Reset to fresh sample data** | Erases everything and sets the clock back to the real date (tick the box first) |
 
@@ -314,7 +314,7 @@ After each run a **Simulation report** shows units requested, the share filled f
 | Cascade Surgical Supply | Email | 7 days | 7 ± 2.5 days |
 | Overseas Medical Imports | Web portal | 21 days | 21 ± 7 days, more often short |
 
-**Try this:**
+**Experiments to try:**
 1. Reset, then press **+7 days** without ordering anything. Look at the stockouts.
 2. Reset, prepare and approve the suggested POs, then press **+7 days** a few times. Compare.
 3. Set *Fully automatic*, raise the Vital service level to 99.9% and simulate a month. More safety stock,
@@ -328,7 +328,7 @@ After each run a **Simulation report** shows units requested, the share filled f
 | Setting | What it does | Default |
 |---|---|---|
 | **Service level: Vital / Essential / Desirable** | The chance of *not* running out during a delivery wait. Higher = more safety stock = more money on the shelf. | 99% / 95% / 90% |
-| **Demand forecast → Method** | How future demand is estimated. Leave on **Auto** unless you are comparing methods. | Auto |
+| **Demand forecast: Method** | How future demand is estimated. Leave on **Auto** unless you are comparing methods. | Auto |
 | **Smoothing constants** | Fine-tuning for the forecast methods. Leave as is unless you know the methods. | α 0.2, β 0.1, γ 0.3, N 3 |
 
 Changes apply immediately to every screen but are **not saved**. They reset when the page is reloaded.
@@ -364,8 +364,8 @@ The 🔎 Item detail tab shows the exact numbers.
 **Why is the order quantity smaller than the "EOQ"?** For items with a short shelf life, MedStock never orders
 more than can be used within 80% of the shelf life, to avoid waste.
 
-**How do I start over with fresh sample data?** Sidebar → Simulation settings → tick *I want to erase everything*
-→ **🔄 Reset to fresh sample data**.
+**How do I start over with fresh sample data?** Sidebar > Simulation settings > tick *I want to erase everything*,
+then **🔄 Reset to fresh sample data**.
 
 **Why are there stockouts right after I start the simulation?** The sample hospital starts with several items
 already below their reorder point, some from a vendor that needs 21 days. Even a perfect order today

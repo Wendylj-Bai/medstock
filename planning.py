@@ -1,5 +1,5 @@
 """
-planning.py — turns raw data (items, usage, deliveries) into decisions.
+planning.py: Turns raw data (items, usage, deliveries) into decisions.
 
 This is where the app becomes "smart": nobody types in the average demand
 or the lead-time variability. We MEASURE them from history, then feed them

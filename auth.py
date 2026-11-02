@@ -1,5 +1,5 @@
 """
-auth.py — simple sign-in for the demo.
+auth.py: Simple sign-in for the demo.
 
 The homepage is public. The demo (all tabs) needs a username and password.
 

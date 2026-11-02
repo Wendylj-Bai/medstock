@@ -1,5 +1,5 @@
 """
-events.py — things that go wrong in a real supply chain: product recalls and vendor disruptions.
+events.py: Things that go wrong in a real supply chain: product recalls and vendor disruptions.
 
 RECALL (a manufacturer or the FDA recalls one lot)
   1. Every unit of the lot still on our shelf is pulled (quarantined) and leaves stock.

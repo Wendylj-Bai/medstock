@@ -49,62 +49,61 @@ CSS = """
 """
 
 _PROBLEMS = [
-    ("Shortages", "High-value consumables run out exactly when they are needed most."),
-    ("Expiry and overstock", "Slow-moving items sit on the shelf until they expire and get written off."),
-    ("Fragmented visibility", "Requests, receipts, lots and counts live in different places, so nobody sees the full picture."),
+    ("Running out", "Critical items like IV fluids and insulin can't wait for a late delivery."),
+    ("Expiring stock", "Items with a short shelf life get thrown away when they're ordered in bulk."),
+    ("Scattered information", "Usage, deliveries, lot numbers and stock counts often live in separate places."),
 ]
 
 _FEATURES = [
-    ("FEFO lot tracking", "Stock leaves the shelf by first-expiry, first-out, and every lot stays traceable."),
-    ("Demand forecasting", "Several methods are backtested against recent usage so each forecast is chosen by evidence."),
-    ("Replenishment recommendations", "Reorder points and order quantities flag what to order today, this week, or later."),
-    ("Simulated purchasing", "Purchase orders go to simulated suppliers, and shipments, partial deliveries and backorders return."),
-    ("Recalls and vendor disruptions", "Recall a lot or take a vendor offline, then watch stock get pulled, orders get rejected, and backup vendors take over."),
-    ("KPI tracking", "Fill rate, stockouts, inventory turns, days on hand, waste and vendor reliability, tracked week by week."),
-    ("ABC-VED prioritization", "Annual usage value (ABC) and clinical criticality (VED) help prioritize inventory control."),
-    ("Movement history and counts", "Issues, receipts, write-offs and physical counts log every change for review."),
+    ("Reorder planning", "Calculates a reorder point and order quantity for every item and flags what to order now or soon."),
+    ("Demand forecasting", "Tests four forecasting methods on past usage and uses the most accurate one for each item."),
+    ("Lot and expiry tracking", "Issues the earliest-expiring stock first and warns before lots expire."),
+    ("Purchasing", "Groups suggested orders into one purchase order per vendor. Simulated vendors confirm, ship, run late or come up short."),
+    ("Recalls and vendor outages", "Pull a recalled lot off the shelf, or take a vendor offline and watch orders move to a backup supplier."),
+    ("KPIs", "Fill rate, stockouts, inventory turns, days on hand, waste and on-time delivery, week by week."),
+    ("ABC-VED priorities", "Ranks items by spending (ABC) and by clinical importance (VED) to decide where attention goes."),
+    ("Full history", "Every issue, receipt, write-off and stock count is logged and can be exported."),
 ]
 
 _STEPS = [
-    ("Demand is recorded", "Every ward issue logs what was requested, what was served, and what was left short."),
-    ("The plan is built", "Forecasts, service levels and ABC-VED classes turn history into expected usage and priority."),
-    ("Ordering and delivery", "Reorder logic suggests purchase orders; vendors respond with shipments and backorders."),
-    ("Reality is recorded", "Receipts, counts and write-offs close the loop, so theory can be checked against what happened."),
+    ("Wards use stock", "Requests are filled from the shelf. Anything that can't be filled is logged as a stockout."),
+    ("The plan updates", "Forecasts and service levels set new reorder points for every item."),
+    ("Orders go out", "Items at or below their reorder point are drafted into purchase orders for approval."),
+    ("Deliveries arrive", "Received lots, counts and write-offs feed into the next day's plan."),
 ]
 
 _COURSE = [
     ("EOQ and total cost", "Economic order quantity, ordering vs. holding cost, sensitivity."),
     ("Safety stock and reorder point", "Uncertain demand and lead time, service level, the (Q, R) policy."),
-    ("Fill rate and loss function", "Expected units short per cycle and the resulting fill rate."),
+    ("Fill rate and loss function", "Expected units short per order cycle and the resulting fill rate."),
     ("ABC classification", "Ranking items by annual usage value."),
     ("Newsvendor model", "One-time purchases with overage and underage costs."),
     ("Demand forecasting", "Moving average, exponential smoothing, Holt, Winters, and error measures (MAD, MSE, MAPE)."),
 ]
 
 _EXTENSIONS = [
-    ("Healthcare adaptation", "VED criticality, service levels by criticality, ABC-VED matrix, shelf-life caps."),
-    ("Lots and expiry", "FEFO picking, expiry-waste projection, 90-day availability risk, lot tracing."),
-    ("Purchasing workflow", "Vendor POs with approval, acknowledgement, ship notice and receiving, modeled on EDI 850/855/856."),
-    ("Simulation", "A clock that generates daily demand and vendor behavior to test reorder policies over weeks."),
-    ("Supply risk", "Lot recalls, vendor disruptions and automatic switch to backup vendors."),
-    ("Measurement", "KPIs and weekly trends, method backtesting, plus the sign-in and portfolio homepage."),
+    ("Healthcare setting", "VED criticality, service levels set by criticality, and order sizes limited by shelf life."),
+    ("Lots and expiry", "First-expired-first-out picking, expiry waste projection, 90-day shortage risk and lot tracing."),
+    ("Purchasing workflow", "Draft, approval, vendor confirmation, ship notice and receiving, modeled on the EDI 850, 855 and 856 messages hospitals use."),
+    ("Simulation clock", "Generates daily demand and vendor behavior, so a reorder policy can be tested over weeks in a few seconds."),
+    ("Supply risk", "Lot recalls, vendor outages and switching to a backup vendor."),
+    ("Reporting", "The KPI page, weekly trends, forecast backtesting, sign-in and this homepage."),
 ]
 
 _STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly"]
 
 _SCOPE = [
-    ("Synthetic data and simulated suppliers", "Nothing here purchases from a real vendor or moves real stock."),
-    ("A learning tool, not clinical software", "Decisions and numbers are illustrative, not production-ready."),
-    ("Future phases are off", "AI assistance is planned, but not enabled in this demo."),
+    ("Synthetic data", "The hospital, its usage history and all four vendors are made up."),
+    ("A learning project", "It isn't clinical software and hasn't been used in a real hospital."),
+    ("Next phase", "AI assistance is planned but not built yet."),
 ]
 
 HERO = """<div class="medi-root">
-  <p class="medi-eyebrow">Supply chain / Portfolio project</p>
+  <p class="medi-eyebrow">Supply chain portfolio project</p>
   <h1>MedStock</h1>
-  <p class="medi-lede">Better inventory decisions. Better prepared care.</p>
-  <p>MedStock is a hands-on demo of a hospital supply room's inventory. It turns inventory
-     theory into operational decisions: what to order, when, how much, and how to spot the
-     items that need attention before they run out or expire.</p>
+  <p class="medi-lede">A hospital supply room inventory planner I built to put my supply chain coursework into practice.</p>
+  <p>It tracks 30 medical supplies from four fictional vendors, tells you what to order and how much,
+     and lets you fast-forward time to see whether those decisions hold up.</p>
 </div>"""
 
 
@@ -114,7 +113,7 @@ def _cards(items):
 
 
 def _list_items(items):
-    return "\n".join(f"<li>{_esc(t)} &mdash; {_esc(d)}</li>" for t, d in items)
+    return "\n".join(f"<li><strong>{_esc(t)}.</strong> {_esc(d)}</li>" for t, d in items)
 
 
 def _steps(items):
@@ -129,69 +128,61 @@ def _chips(items):
 def _body():
     return f"""<div class="medi-root">
   <section class="medi-section">
-    <h2>The problem</h2>
-    <p>Hospital supplies are managed between two failures: run out of something critical, or
-       let a slow mover expire. Neither shows up in the same place as the ordering history.</p>
+    <h2>Why hospital inventory is hard</h2>
+    <p>A supply room has to avoid two opposite mistakes. Run short on IV fluids or insulin and patient
+       care suffers. Overstock slow-moving items and they expire on the shelf. On top of that, lead
+       times vary by vendor and demand changes with the season.</p>
     <ul class="medi-scope">
 {_list_items(_PROBLEMS)}
     </ul>
   </section>
 
   <section class="medi-section">
-    <h2>What MedStock does</h2>
-    <p>Eight capabilities work together so the inventory tells staff what needs attention.</p>
+    <h2>What it does</h2>
     <div class="medi-grid">
 {_cards(_FEATURES)}
     </div>
   </section>
 
   <section class="medi-section">
-    <h2>From demand to decision</h2>
-    <p>Recorded movements feed planning models; simulated outcomes help test their assumptions.</p>
+    <h2>How a simulated day works</h2>
     <div class="medi-steps">
 {_steps(_STEPS)}
     </div>
-    <p class="medi-illustrative">Illustrative workflow used inside the demo.</p>
   </section>
 
   <section class="medi-section">
-    <h2>Course foundation and my extensions</h2>
-    <p>The core models come from the Inventory Management and Forecasting lessons of my Supply Chain
-       Management course at the University of Portland. Everything that turns them into a working
-       hospital system is my own research and design beyond the course.</p>
+    <h2>What came from class and what I added</h2>
+    <p>The formulas come from the Inventory Management and Forecasting units of my Supply Chain
+       Management course at the University of Portland. The hospital setting and everything built
+       around the formulas is my own research.</p>
     <h3 class="medi-subhead">From the course</h3>
     <div class="medi-grid">
 {_cards(_COURSE)}
     </div>
-    <h3 class="medi-subhead">My research and extensions</h3>
+    <h3 class="medi-subhead">My additions</h3>
     <div class="medi-grid">
 {_cards(_EXTENSIONS)}
     </div>
   </section>
 
   <section class="medi-section">
-    <h2>Built to make the reasoning visible</h2>
-    <p>Every recommendation can be compared with what actually happened: the plan shows the
-       theoretical coverage from the models, while measured fill rates and stockouts show the
-       observed outcome, so the assumptions stay checkable.</p>
+    <h2>Built with</h2>
+    <p>Each screen can show the calculation behind its numbers, so you can check why an item was
+       flagged instead of taking it on faith.</p>
     <div class="medi-chips">
 {_chips(_STACK)}
     </div>
   </section>
 
   <section class="medi-section">
-    <h2>Project scope</h2>
+    <h2>Scope and limits</h2>
     <ul class="medi-scope">
 {_list_items(_SCOPE)}
     </ul>
-    <p class="medi-note">This is a self-study portfolio project about managing hospital supply
-       inventory. The data inside the demo is synthetic, and all vendor activity is simulated
-       locally. Nothing is connected to a real hospital or supplier.</p>
   </section>
 
-  <footer class="medi-footer">MedStock &mdash; hospital supply inventory demo, built with Python and
-    Streamlit. Core models from a University of Portland supply chain management course; the
-    extensions are independent research.</footer>
+  <footer class="medi-footer">MedStock is a supply chain portfolio project built with Python and Streamlit.</footer>
 </div>"""
 
 
@@ -201,5 +192,5 @@ def render_homepage():
     if st.button("Explore the inventory demo", key="open_demo"):
         st.session_state["view"] = "demo" if st.session_state.get("user") else "login"
         st.rerun()
-    st.caption("The demo requires sign-in; access is by invitation. All data inside it is synthetic.")
+    st.caption("The demo is invite-only and needs a sign-in. All data in it is made up.")
     st.html(_body())
