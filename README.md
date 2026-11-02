@@ -81,6 +81,7 @@ as expected values, and every test runs on a temporary database.
 
 - [User Guide](docs/USER_GUIDE.md): how to use the app day to day (also in the app's Help tab)
 - [How It Works](docs/HOW_IT_WORKS.md): formulas, data model and design decisions
+- [AGENTS.md](AGENTS.md): guide for collaborators and AI coding assistants (architecture, rules, roadmap)
 
 ## Files
 
@@ -102,4 +103,13 @@ as expected values, and every test runs on a temporary database.
 ## Scope
 
 This is a learning project. The hospital, its usage history and the vendors are made up, and it
-isn't clinical software. AI assistance is planned as a later phase.
+isn't clinical software.
+
+## What's next
+
+MedStock is still growing. Planned next steps:
+
+- Receiving one delivery that arrives as several lots
+- Comparing two inventory policies side by side over the same simulated period
+- Ward supply rooms with par levels, on top of the central storeroom
+- AI assistance that explains its suggestions using the app's own numbers (last phase)

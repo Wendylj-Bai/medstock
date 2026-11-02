@@ -95,7 +95,13 @@ _STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly"]
 _SCOPE = [
     ("Synthetic data", "The hospital, its usage history and all four vendors are made up."),
     ("A learning project", "It isn't clinical software and hasn't been used in a real hospital."),
-    ("Next phase", "AI assistance is planned but not built yet."),
+]
+
+_NEXT = [
+    ("Multi-lot receiving", "Receiving one delivery that arrives as several lots."),
+    ("Policy comparison", "Running two inventory policies over the same simulated period and comparing the results."),
+    ("Ward supply rooms", "Par levels and transfers between the central storeroom and the wards."),
+    ("AI assistance", "Suggestions that explain themselves with the app's own numbers. Planned as the last phase."),
 ]
 
 HERO = """<div class="medi-root">
@@ -179,6 +185,14 @@ def _body():
     <h2>Scope and limits</h2>
     <ul class="medi-scope">
 {_list_items(_SCOPE)}
+    </ul>
+  </section>
+
+  <section class="medi-section">
+    <h2>What's next</h2>
+    <p>MedStock is a work in progress. These are the next things I plan to build.</p>
+    <ul class="medi-scope">
+{_list_items(_NEXT)}
     </ul>
   </section>
 
