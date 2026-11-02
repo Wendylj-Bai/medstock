@@ -54,6 +54,11 @@ pu.process_vendor_responses(conn, TODAY)   # close orders a disrupted vendor has
 items, usage, deliveries, open_pos, lots = db.load_frames(conn, TODAY)
 
 
+def n(count, word, plural=None):
+    """'1 lot', '2 lots' (or a given plural)."""
+    return f"{count:,} {word if count == 1 else plural or word + 's'}"
+
+
 def done(message):
     """Show a success message after the page reloads with the new numbers."""
     st.session_state["flash"] = message
@@ -131,12 +136,12 @@ if step_1 or step_7 or step_next:
     if days == 0:
         st.sidebar.warning("No deliveries are on their way. Send a purchase order first (🛒 Purchasing).")
     else:
-        with st.spinner(f"Simulating {days} day(s)…"):
+        with st.spinner(f"Simulating {n(days, 'day')}…"):
             report = sim.advance(conn, days, {"V": sl_v, "E": sl_e, "D": sl_d},
                                  "Auto" if fc_method.startswith("Auto") or fc_method == SIMPLE else fc_method,
                                  fc_params, auto_mode, auto_receive, random_events=random_events)
         st.session_state["sim_report"] = report
-        done(f"Simulated {days} day(s). Today is now {report['end']:%b %d, %Y}.")
+        done(f"Simulated {n(days, 'day')}. Today is now {report['end']:%b %d, %Y}.")
 
 
 @st.cache_data(show_spinner="Forecasting demand…")
@@ -199,7 +204,7 @@ if rep:
             worst = (so.groupby(["item", "ved"]).agg(days=("date", "count"), units_short=("short", "sum"))
                      .reset_index().sort_values(["ved", "units_short"], key=lambda c: c.map({"V": 0, "E": 1, "D": 2})
                                                 if c.name == "ved" else -c))
-            st.error("Stockouts: " + ", ".join(f"**{r.item}** ({r.ved}, {r.units_short:,} short over {r.days} day(s))"
+            st.error("Stockouts: " + ", ".join(f"**{r.item}** ({r.ved}, {r.units_short:,} short over {n(r.days, 'day')})"
                                                for r in worst.head(6).itertuples()))
         for ev in rep.get("events", []):
             st.warning(f"**{ev['date']:%b %d}**: {ev['event']}. See 🚨 Recalls & disruptions.")
@@ -250,12 +255,12 @@ with tab_dash:
     if len(vital_at_risk):
         st.error("**Vital items at risk:** " + ", ".join(
             f"{r.name} ({r.days_of_supply:.0f} days of supply left)" for r in vital_at_risk.itertuples())
-            + ". " + ("Some have no usable stock at all; " if (vital_at_risk["usable"] == 0).any() else "")
+            + ". " + ("Some have no usable stock at all. " if (vital_at_risk["usable"] == 0).any() else "")
             + "Check the reorder plan and any open purchases below.")
     for o in active_outages.itertuples():
         n_items = int((plan["supplier"] == o.supplier).sum())
         st.error(f"🏭 **{o.supplier} cannot supply** until {pd.Timestamp(o.end_date):%b %d} ({o.reason}). "
-                 f"New orders for its {n_items} item(s) go to their backup vendor at +{pu.BACKUP_PREMIUM:.0%}. "
+                 f"New orders for its {n(n_items, 'item')} go to their backup vendor at +{pu.BACKUP_PREMIUM:.0%}. "
                  "See 🚨 Recalls & disruptions.")
     new_recalls = recall_list[pd.to_datetime(recall_list["date"]) > pd.Timestamp(TODAY) - pd.Timedelta(days=14)]
     for r in new_recalls.itertuples():
@@ -275,15 +280,15 @@ with tab_dash:
     recent_so = stockouts[stockouts["date"] > pd.Timestamp(TODAY) - pd.Timedelta(days=30)]
     if len(recent_so):
         by_item = recent_so.groupby(["name", "ved"])["qty_short"].sum().reset_index()
-        st.error(f"🚫 Stockouts in the last 30 days: {len(recent_so)} event(s). " + ", ".join(
+        st.error(f"🚫 Stockouts in the last 30 days: {n(len(recent_so), 'event')}. " + ", ".join(
             f"{r.name} ({r.ved}, {r.qty_short:,} short)" for r in by_item.itertuples()))
     expired = lot_risk[lot_risk["days_left"] <= 0]
     soon = lot_risk[(lot_risk["days_left"] > 0) & (lot_risk["days_left"] <= 30)]
     parts = []
     if len(expired):
-        parts.append(f"{len(expired)} expired lot(s) still on the shelf (${expired['value'].sum():,.0f})")
+        parts.append(f"{n(len(expired), 'expired lot')} still on the shelf (${expired['value'].sum():,.0f})")
     if len(soon):
-        parts.append(f"{len(soon)} lot(s) expiring within 30 days")
+        parts.append(f"{n(len(soon), 'lot')} expiring within 30 days")
     if parts:
         st.warning("⏳ " + " and ".join(parts) + ". See the ⏳ Expiry tab.")
     if len(rising):
@@ -325,7 +330,8 @@ with tab_dash:
     hidden_vital_risk = plan[(plan["ved"] == "V") & plan["availability_risk"].str.startswith("🔴")
                              & ~plan.index.isin(view.index)]
     st.caption(f"Showing **{len(view)} of {len(plan)}** items." + (
-        f" ⚠️ {len(hidden_vital_risk)} Vital item(s) with 🔴 availability are hidden by your filters."
+        f" ⚠️ {n(len(hidden_vital_risk), 'Vital item')} with 🔴 availability "
+        f"{'is' if len(hidden_vital_risk) == 1 else 'are'} hidden by your filters."
         if len(hidden_vital_risk) else "") +
         " · **Reorder status** = time to place an order? · **Availability** = will usable stock last 90 days? "
         "(🟢 reorder status with 🔴 availability means an order is already coming, but may arrive too late.)")
@@ -358,7 +364,8 @@ with tab_dash:
     drafted = pu.items_in_drafts(conn)
     to_order = red[(red["order_qty"] > 0) & ~red["item_id"].isin(drafted)]
     if drafted:
-        st.info(f"📝 {len(set(drafted.values()))} draft PO(s) with {len(drafted)} item(s) are waiting for approval "
+        st.info(f"📝 {n(len(set(drafted.values())), 'draft PO')} with {n(len(drafted), 'item')} "
+                f"{'is' if len(set(drafted.values())) == 1 else 'are'} waiting for approval "
                 "in 🛒 Purchasing. A draft is not an order yet: the vendor has not received it.")
     if len(to_order):
         to_order = to_order.assign(order_value=np.where(to_order["order_vendor"] != to_order["supplier"],
@@ -379,7 +386,7 @@ with tab_dash:
         if sugg.empty:
             st.warning("Items need ordering, but their primary AND backup vendors are both disrupted. "
                        "Watch stock closely and consider substitutes until a vendor is back.")
-        elif st.button(f"📝 Prepare {len(sugg)} draft purchase order(s), one per vendor", type="primary"):
+        elif st.button(f"📝 Prepare {n(len(sugg), 'draft purchase order')}, one per vendor", type="primary"):
             made = pu.draft_suggested_orders(conn, plan)
             done(f"Drafted {', '.join(made)} with the suggested quantities. Review and send them in 🛒 Purchasing.")
         st.caption("Quantities, prices and vendors are filled in for you. You review, adjust and approve them in "
@@ -478,7 +485,7 @@ with tab_kpi:
     c[2].metric("Orders rejected", k["rejected_orders"], help="Rejected by a vendor during a supply disruption")
     c[3].metric("Spend with backup vendors", pct(k["backup_share"]),
                 help=f"Share of purchasing spend (${k['spend']:,.0f}) placed with a backup vendor at a higher price")
-    st.caption(f"{k['recalls']} recall(s) and {k['outage_days']} vendor-disruption day(s) in this period.")
+    st.caption(f"{n(k['recalls'], 'recall')} and {n(k['outage_days'], 'vendor-disruption day')} in this period.")
     if not k["vendors"].empty:
         st.dataframe(k["vendors"], hide_index=True, width="stretch", column_config={
             "vendor": "Vendor", "deliveries": "Deliveries",
@@ -580,7 +587,8 @@ with tab_risk:
                          "origin": "Source"})
         for o in active_outages.itertuples():
             affected = plan[plan["supplier"] == o.supplier]
-            st.markdown(f"**{o.supplier}**: {len(affected)} item(s) switch to their backup vendor: " + ", ".join(
+            st.markdown(f"**{o.supplier}**: {n(len(affected), 'item')} {'switches' if len(affected) == 1 else 'switch'} to "
+                        "the backup vendor: " + ", ".join(
                 f"{r.name} (now from {r.backup_supplier})" for r in affected.itertuples()))
             if st.button(f"✅ {o.supplier} is supplying again", key=f"end_outage_{o.outage_id}"):
                 _, err = run(events.end_outage, o.supplier)
@@ -673,7 +681,7 @@ with tab_buy:
                                                               f"{label.at[o, 'status']}")
                 drafts_left = [o for o in ids if label.at[o, "stage"] == "DRAFT" and o != order_no]
                 if drafts_left:
-                    st.caption(f"📝 {len(drafts_left)} more draft(s) waiting for approval: " +
+                    st.caption(f"📝 {n(len(drafts_left), 'more draft')} waiting for approval: " +
                                ", ".join(f"{o} ({label.at[o, 'supplier']})" for o in drafts_left))
                 h = pu.order_header(conn, order_no)
                 current = pu.stage(h, TODAY)
@@ -788,7 +796,7 @@ with tab_buy:
         red_counts = plan[plan["status"].str.startswith("🔴")].groupby("order_vendor").size()
         down = set(active_outages["supplier"])
         supplier = st.selectbox("Vendor", vendor_names,
-                                format_func=lambda v: f"{v} ({red_counts.get(v, 0)} item(s) to order now)"
+                                format_func=lambda v: f"{v} ({n(int(red_counts.get(v, 0)), 'item')} to order now)"
                                                       + (" · 🏭 DISRUPTED" if v in down else ""))
         if supplier in down:
             st.error(f"🏭 {supplier} cannot supply right now. Orders sent to it will be rejected.")
@@ -920,7 +928,7 @@ with tab_move:
         if at_dock.empty:
             coming = open_pos["arrive_date"].dropna()
             st.info("Nothing is waiting at the receiving dock." + (
-                f" {open_pos['order_no'].nunique()} order(s) are on their way; check 🛒 Purchasing or press "
+                f" {n(open_pos['order_no'].nunique(), 'order')} on the way. Check 🛒 Purchasing or press "
                 "🚚 Next in the sidebar to jump to the next delivery." if len(open_pos) else
                 " Order stock in 🛒 Purchasing."))
         else:
