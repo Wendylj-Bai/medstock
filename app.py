@@ -31,7 +31,8 @@ import simulation as sim
 import ui
 
 ASSETS = Path(__file__).parent / "assets"
-st.set_page_config(page_title="MedStock", page_icon=str(ASSETS / "logo.png"), layout="wide")
+st.set_page_config(page_title="MedStock", page_icon=str(ASSETS / "logo.png"), layout="wide",
+                   initial_sidebar_state="expanded")          # the menu is visible as soon as you sign in
 
 if st.query_params.get("open") == "demo":           # "Open the demo" links on the homepage
     del st.query_params["open"]
