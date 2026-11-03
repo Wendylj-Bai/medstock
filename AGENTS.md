@@ -7,7 +7,7 @@ the rules that keep it working, and what is planned next. For the formulas, see
 
 ## 1. The project in short
 
-MedStock is a Streamlit web app that runs the supply room of a fictional US hospital: 30 items,
+MedStock is a Streamlit web app that runs the supply room of a fictional US hospital: 150 items,
 four fictional vendors, all amounts in USD. It started as a way to apply the Inventory Management
 and Forecasting units of a Supply Chain Management course (University of Portland), then grew into
 a fuller system through the owner's own research.
@@ -36,13 +36,15 @@ a fuller system through the owner's own research.
    extension. The homepage and README both have a section on this, so keep it accurate when adding
    features.
 8. **Run the full test suite before you say a change is done**, and report failures as they are.
+9. **Add an entry to [docs/BUILD_LOG.md](docs/BUILD_LOG.md)** for each feature or notable fix:
+   what was built, what went wrong, and the decision. Keep it short and in the owner's first-person voice.
 
 ## 3. Run, test, deploy
 
 ```bash
 python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt   # first time only
 .venv/bin/streamlit run app.py          # http://localhost:8501
-.venv/bin/python -m pytest -q           # 68 tests, about 40 seconds
+.venv/bin/python -m pytest -q           # 77 tests, about 100 seconds
 .venv/bin/python auth.py add <name>     # create a sign-in account (prints a line for secrets.toml)
 ```
 
@@ -80,15 +82,18 @@ app.py draws the screens; homepage.py and auth.py gate them
 | `simulation.py` | The clock | `advance` |
 | `auth.py` | Sign-in with salted PBKDF2 hashes from Streamlit secrets | `render_login`, `verify`, `hash_password` |
 | `homepage.py` | Public portfolio page (no database access) | `render_homepage` |
-| `app.py` | All screens: 12 tabs plus the sidebar | |
+| `app.py` | All screens: 12 pages plus the sidebar | |
+| `ui.py` | Palette, icon set (Lucide-style line icons and solid feature icons), sidebar menu and card CSS | `PAGES`, `nav_css`, `kpi_css`, `tile_uri`, `solid_uri` |
 
-**Tab order** (tests use these positions, so update the tests if you add or move a tab):
-0 Dashboard, 1 KPIs, 2 Purchasing, 3 Stock movements, 4 Recalls & disruptions, 5 Forecast,
-6 Expiry, 7 Item detail, 8 History, 9 ABC-VED, 10 Calculators, 11 Help.
+**Pages** are listed once, in `ui.PAGES` (title, icon, color). The sidebar menu is built from it
+and only the open page is drawn: each page is an `if PAGE == "...":` block in `app.py`, so a page
+must never rely on a variable created inside another page's block
+(`test_every_sidebar_page_opens_without_errors` checks this). Tests open a page with
+`open_page(at, "Forecast")` in `test_app.py`.
 
 **Page flow in `app.py`:** `view` in session state is `home`, `login` or `demo`. The demo only
 renders when `st.session_state["user"]` is set. Each page load: connect, close vendor-rejected
-orders, load data, build the plan (cached forecast), then draw the tabs. Actions call `done(msg)`,
+orders, load data, build the plan (cached forecast), then draw the open page. Actions call `done(msg)`,
 which stores a toast and reruns the page.
 
 ## 5. Data model (SQLite, `data/medstock.db`)
@@ -97,6 +102,7 @@ which stores a toast and reruns the page.
 |---|---|
 | `items` | Item master: cost, VED, shelf life, `supplier` (primary), `backup_supplier` |
 | `lots` | The stock itself: one row per batch with lot number, expiry and quantity left |
+| `asn_lots` | The lots a vendor's ship notice announced for each PO line (one line can be several lots) |
 | `usage` | Daily demand history, **including unmet demand**, so forecasts see true demand |
 | `deliveries` | Completed receipts with the real lead time (feeds σL) |
 | `po_headers` | One purchase order per vendor, with the dates of the vendor's response and `vendor_note` |
@@ -158,7 +164,6 @@ working, so add columns with `ALTER TABLE` there and never assume a fresh databa
 
 ## 8. Known limitations
 
-- One delivery line is received as one lot (multi-lot receiving is planned).
 - One storeroom only: no ward-level stock or par levels.
 - One primary and one backup vendor per item, no substitute items.
 - No invoices, case-pack rounding, contract pricing or user roles.
@@ -170,7 +175,7 @@ working, so add columns with `ALTER TABLE` there and never assume a fresh databa
 
 In no fixed order, except that AI comes last:
 
-1. **Multi-lot receiving:** one delivery line arriving as several lots.
+1. ~~Multi-lot receiving~~: done (November 3, 2026).
 2. **Scenario comparison:** run the same period with two policies (for example 95% vs 99% Vital
    service level) and compare the KPIs side by side.
 3. **Multiple locations:** central storeroom plus ward supply rooms with par levels and transfers.

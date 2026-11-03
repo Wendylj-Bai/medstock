@@ -25,21 +25,24 @@ Then open **http://localhost:8501** in your browser. Leave the terminal window o
 
 ## 2. What's on the screen
 
-| Area | What it is for |
+The sidebar on the left has three parts: the **menu** (one entry per page, with the open page
+highlighted), the **simulation clock**, and the hospital **policy settings** (how much protection
+each type of item gets, and how demand is forecast). Click a menu entry to open that page.
+
+| Page | What it is for |
 |---|---|
-| **Sidebar (left)** | The 🕒 **simulation clock**, plus hospital policy settings: how much protection each type of item gets, and how demand is forecast |
-| 📋 **Dashboard** | Start here every day: what to order, what is at risk |
-| 📊 **KPIs** | Is inventory management working? Fill rate, stockouts, inventory turns, days on hand, waste, vendor reliability, weekly trends |
-| 🛒 **Purchasing** | Purchase orders to vendors: drafts to approve, orders on their way, vendor messages, the vendor directory and scorecard |
-| 📦 **Stock movements** | Record what physically happens: issue to a department, receive a delivery, write off, count |
-| 🚨 **Recalls & disruptions** | Recall a lot, or make a vendor unable to supply, and watch how the system reacts |
-| 📈 **Forecast** | Expected demand for the next 12 months, and which items are about to get busier |
-| ⏳ **Expiry** | Expired stock, stock expiring soon, and stock that will expire before it can be used |
-| 🔎 **Item detail** | Everything about one item, including how its reorder point was calculated |
-| 📜 **History** | Every movement ever recorded, record accuracy, and lot tracing for recalls |
-| 🅰️ **ABC-VED analysis** | Which items deserve the most attention (money × clinical importance) |
-| 🧮 **Calculators** | What-if calculators for order quantity, reorder point and one-time purchases |
-| 📖 **Help** | This guide |
+| **Dashboard** | Start here every day: what to order, what is at risk |
+| **KPIs** | Is inventory management working? Fill rate, stockouts, inventory turns, days on hand, waste, vendor reliability, weekly trends |
+| **Purchasing** | Purchase orders to vendors: drafts to approve, orders on their way, vendor messages, the vendor directory and scorecard |
+| **Stock movements** | Record what physically happens: issue to a department, receive a delivery, write off, count |
+| **Recalls & disruptions** | Recall a lot, or make a vendor unable to supply, and watch how the system reacts. A red number on this menu entry counts active vendor outages and recalls from the last 14 days |
+| **Forecast** | Expected demand for the next 12 months, and which items are about to get busier |
+| **Expiry** | Expired stock, stock expiring soon, and stock that will expire before it can be used |
+| **Item detail** | Everything about one item, including how its reorder point was calculated |
+| **History** | Every movement ever recorded, record accuracy, and lot tracing for recalls |
+| **ABC-VED analysis** | Which items deserve the most attention (money × clinical importance) |
+| **Calculators** | What-if calculators for order quantity, reorder point and one-time purchases |
+| **Help** | This guide |
 
 ---
 
@@ -88,11 +91,11 @@ Then open **http://localhost:8501** in your browser. Leave the terminal window o
 - Every time a delivery arrives: **receive it** (6.2).
 
 **Every week**
-- ⏳ **Expiry** tab: write off expired stock, act on lots that will expire unused.
+- ⏳ **Expiry** page: write off expired stock, act on lots that will expire unused.
 - **Cycle count** a few items (6.6). Count Category I items (see ABC-VED) every week.
 
 **Every month**
-- 📈 **Forecast** tab: look at the seasonal outlook before flu season or summer.
+- 📈 **Forecast** page: look at the seasonal outlook before flu season or summer.
 
 ---
 
@@ -142,11 +145,11 @@ Vital item with 🔴 availability.
 
 **Why does a Vital item disappear from the list after I order it?** Because it is no longer at risk:
 the order counts as *on order*, and usable + on order is now above the reorder point. If the delivery
-is late, watch **Open purchase orders** in 📦 Stock movements (late ones are marked *Overdue*).
+is late, watch **Open purchase orders** in Stock movements (late ones are marked *Overdue*).
 
 ### 5.4 Other banners
 
-- ⏳ **Yellow box**: expired lots still on the shelf, or lots expiring within 30 days. Go to the ⏳ Expiry tab.
+- ⏳ **Yellow box**: expired lots still on the shelf, or lots expiring within 30 days. Go to the Expiry page.
 - 📈 **Blue box**: items whose demand is forecast to rise by 15% or more over the next 90 days.
   Their reorder points already include the rise, so nothing extra is needed. It is a heads-up.
 - 📦 **Deliveries at the dock**: a vendor delivery has arrived and must be received before it can be used.
@@ -158,7 +161,7 @@ is late, watch **Open purchase orders** in 📦 Stock movements (late ones are m
 Under **Suggested purchase orders by vendor** you see one line per vendor with the PO value and freight.
 Click **📝 Prepare N draft purchase order(s), one per vendor**. MedStock fills in the vendor, every
 item, the quantity (order up to R + Q) and the price. Nothing is sent yet: you review and approve the
-drafts in 🛒 Purchasing (6.3). Only then do the items count as *on order* and turn 🟢 or 🟡.
+drafts in Purchasing (6.3). Only then do the items count as *on order* and turn 🟢 or 🟡.
 
 ---
 
@@ -176,16 +179,20 @@ drafts in 🛒 Purchasing (6.3). Only then do the items count as *on order* and 
 
 ### 6.2 Receive a delivery
 A delivery can be received once it has **arrived at the dock** (📦 banner on the Dashboard, or
-status 📦 *Arrived at dock* in 🛒 Purchasing).
+status 📦 *Arrived at dock* in Purchasing).
 
-**Quick way (everything as the vendor said):** 🛒 **Purchasing** > open the PO >
-**📥 Receive whole shipment (as per ASN)**. Every line goes on the shelf with the lot number and expiry
-date from the vendor's ship notice.
+**Quick way (everything as the vendor said):** **Purchasing** > open the PO >
+**Receive whole shipment (as per ASN)**. Every line goes on the shelf with the lot numbers and expiry
+dates from the vendor's ship notice. A line can arrive as **several lots** (boxes from different
+production runs, each with its own expiry date); each lot gets its own place on the shelf, so the
+earliest-expiring one is issued first. If one of those lots is under recall, only that lot is refused.
 
-**Line by line (to check the boxes):** 📦 **Stock movements** > **📥 Receive delivery**.
+**Line by line (to check the boxes):** **Stock movements** > **Receive delivery**.
 1. Choose the **Delivery line**.
-2. Quantity, **lot number** and **expiry date** are pre-filled from the ship notice. Change them if the boxes say
-   something else (e.g. a box is missing). Both lot number and expiry date are required.
+2. The **lots table** is pre-filled from the ship notice: one row per lot number, with its expiry
+   date and quantity. Change a row if the boxes say something else, add a row for an extra lot, or
+   delete one. The line under the table shows the total you are receiving. Every lot needs a lot
+   number and an expiry date, and the same lot number cannot appear twice.
 3. Check the yellow warning, if any: it appears when, at current usage, part of this lot would
    expire before it can be used. Consider refusing it or asking for a longer-dated lot.
 4. Click **Receive**, or **Refuse / cancel this line** to send it back.
@@ -204,12 +211,12 @@ MedStock records the real delivery time, which makes future reorder points more 
 5. Click **✅ Approve & send to vendor**. (Or **💾 Save changes** to keep it as a draft, or **🗑️ Delete draft**.)
 6. **⬇️ Download PO document** gives a printable PO (open it in your browser, print or save as PDF).
 
-**To order something MedStock did not suggest:** 🛒 Purchasing > **➕ New purchase order** > choose the vendor.
+**To order something MedStock did not suggest:** Purchasing > **➕ New purchase order** > choose the vendor.
 Every item from that vendor is listed with its status and a *Suggested* quantity. Type the quantities you
 want under **Order qty**, then **Approve & send** or **Save as draft**.
 
 ### 6.4 Follow an order and cancel it
-Open the PO in 🛒 Purchasing. The status bar shows where it is:
+Open the PO in Purchasing. The status bar shows where it is:
 
 📝 Draft > 📤 Sent > ✔️ Confirmed > 🚚 Shipped > 📦 Arrived at dock > ✅ Received
 
@@ -219,7 +226,7 @@ Under **Vendor messages** you see what the vendor has told you so far: the ackno
 
 ### 6.5 Write off stock (expired, damaged, recalled, lost)
 - **One lot:** 📦 **Stock movements** > **🗑️ Write-off** > choose the item and the **lot** > reason > quantity > **Write off**.
-- **All expired stock at once:** ⏳ **Expiry** tab > **🗑️ Write off all expired lots**.
+- **All expired stock at once:** ⏳ **Expiry** page > **🗑️ Write off all expired lots**.
 
 Write-offs are *not* counted as demand, so they do not make the forecast think the item is busier.
 
@@ -230,7 +237,7 @@ Write-offs are *not* counted as demand, so they do not make the forecast think t
    so the count is not influenced by it (a *blind count*).
 4. Click **Save count**. If the number differs, MedStock corrects the stock and records the difference.
 
-The **Record accuracy** number in 📜 History shows how often the counts matched. Aim for 97% or more.
+The **Record accuracy** number in History shows how often the counts matched. Aim for 97% or more.
 
 ### 6.7 Handle a recall
 1. 🚨 **Recalls & disruptions** > **Product recalls**.
@@ -246,7 +253,7 @@ Recall classes (FDA): **I** could cause serious harm, **II** temporary or revers
 cause harm (for example a labeling error). Every movement of any lot: 📜 **History** > **🔍 Lot trace**.
 
 ### 6.8 When a vendor cannot supply (disruption)
-Every item has a **primary** vendor and a **backup** vendor (shown in 🛒 Purchasing > 🏢 Vendors).
+Every item has a **primary** vendor and a **backup** vendor (shown in Purchasing > 🏢 Vendors).
 1. 🚨 **Recalls & disruptions** > **Vendor disruptions**: choose the vendor, how many days, and why, then
    **🏭 Start disruption** (or **🎲 Simulate a random disruption**).
 2. While it lasts:
@@ -289,7 +296,7 @@ The sidebar shows **Today** (marked *simulated* once the clock has moved).
 | Button | What happens |
 |---|---|
 | **+1 day** / **+7 days** | Each simulated day: deliveries at the dock are received (if auto-receive is on), every department uses stock (random demand around the forecast, quieter on weekends), and vendors move your orders along |
-| **🚚 Next** | Jumps to the day the next delivery arrives |
+| **Next** | Jumps to the day the next delivery arrives |
 
 After each run a **Simulation report** shows units requested, the share filled from the shelf
 (the fill rate), **stockouts**, deliveries received and POs created.
@@ -303,7 +310,7 @@ After each run a **Simulation report** shows units requested, the share filled f
 | **Fully automatic (send POs)** | MedStock drafts *and sends* the POs. Hospitals do this for low-risk, high-volume items. |
 | **Auto-receive deliveries** | Receive deliveries as the ship notice lists them. Turn off to receive them yourself. |
 | **Random events** | Each simulated day there is a small chance that a vendor cannot supply for 1-4 weeks (about every 6 weeks), or that a lot on your shelf is recalled (about every 6 weeks). Off by default. |
-| **🔄 Reset to fresh sample data** | Erases everything and sets the clock back to the real date (tick the box first) |
+| **Reset to fresh sample data** | Erases everything and sets the clock back to the real date (tick the box first) |
 
 **Vendors behave like real ones (all fictional):**
 
@@ -344,8 +351,8 @@ Changes apply immediately to every screen but are **not saved**. They reset when
 | *This lot is already expired* | The expiry date is today or earlier | Do not accept the delivery |
 | *Received date cannot be before the order date* | Date typo | Check the date |
 | *Date cannot be in the future* | Date typo | Use today or an earlier date |
-| *… is not an open purchase order* | It was already received or cancelled | Check 🛒 Purchasing |
-| *… has not arrived yet* | The delivery is still with the vendor or carrier | Wait, or press 🚚 Next |
+| *… is not an open purchase order* | It was already received or cancelled | Check Purchasing |
+| *… has not arrived yet* | The delivery is still with the vendor or carrier | Wait, or press Next |
 | *… is not supplied by …* | Each item has one vendor in the item master | Put it on that vendor's PO |
 | *… has already shipped* | Too late to cancel | Refuse the line at the dock (6.2) |
 | *Below the vendor's minimum order* | The PO is small | Add 🟡 items from the same vendor, or accept a small-order fee |
@@ -359,13 +366,13 @@ Only an order (or a receipt) makes it go back to 🟢.
 
 **The suggested order is bigger than usual. Why?** Either the stock has fallen well below the reorder point
 (MedStock then also orders the shortfall), or the forecast expects busier weeks ahead (e.g. flu season).
-The 🔎 Item detail tab shows the exact numbers.
+The Item detail page shows the exact numbers.
 
 **Why is the order quantity smaller than the "EOQ"?** For items with a short shelf life, MedStock never orders
 more than can be used within 80% of the shelf life, to avoid waste.
 
 **How do I start over with fresh sample data?** Sidebar > Simulation settings > tick *I want to erase everything*,
-then **🔄 Reset to fresh sample data**.
+then **Reset to fresh sample data**.
 
 **Why are there stockouts right after I start the simulation?** The sample hospital starts with several items
 already below their reorder point, some from a vendor that needs 21 days. Even a perfect order today
@@ -377,14 +384,13 @@ per vendor, and fill in quantities and contract prices. A buyer approves, often 
 (expensive or unusual orders), and the PO goes to the vendor electronically (EDI).
 MedStock works the same way; the sidebar setting lets you try all three levels of automation.
 
-**Is the sample data real?** No. It is a realistic, made-up US hospital with 30 items, 3 years of usage,
+**Is the sample data real?** No. It is a realistic, made-up US hospital with 150 items, 3 years of usage,
 a yearly flu season and a summer peak for trauma supplies.
 
 ---
 
 ## 11. Current limitations
 
-- One delivery is received as one lot. A delivery with two lot numbers must be received as two partial deliveries.
 - Each item has one primary and one backup vendor; real systems may have several, plus approved substitute items.
 - A recall pulls the lot from the storeroom only; stock already on ward shelves is not tracked (wards are listed to notify).
 - No invoices or three-way match (PO = receipt = invoice), and no rounding to case packs.

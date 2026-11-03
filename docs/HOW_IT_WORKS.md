@@ -228,7 +228,8 @@ that arrived (on time = arrival ≤ promised date) or were rejected in the perio
 ## 5. Lots, FEFO and expiry
 
 - **Issue:** picks lots in expiry order, skipping lots with `expiry_date ≤ issue date`. Refuses if usable stock is insufficient.
-- **Receive:** requires lot number and expiry date; rejects expired lots; warns when (usable + qty) / d̄ exceeds the days left.
+- **Receive:** one delivery line can hold several lots (`db.receive_lots`). Every lot needs a lot number and expiry date, none may be expired, recalled or listed twice, and the total cannot exceed what is outstanding; all lots are checked before anything is saved. Each lot becomes its own row in `lots`, but the receipt is one ledger row and one `deliveries` row, so σL gets one lead-time sample per delivery. Warns when (usable + qty) / d̄ exceeds the days left.
+- **Split shipments:** when a vendor ships, about 30% of lines (`purchasing.SPLIT_LOT_CHANCE`) are packed as 2 or 3 lots from different production runs, stored in `asn_lots`. The split uses its own random stream, so it never changes the vendor's dates or quantities.
 - **Expiry projection** (`planning.project_expiry`): for each item, lots are taken in expiry order.
   With C(t) = cumulative forecast demand over the next t days and U = units already used from earlier lots:
 
@@ -263,7 +264,8 @@ Where the slides show no final answer, the expected values were computed by hand
 ---
 
 ## 8. Sample data
-`generate_sample_data.py` creates a fictional US hospital: 30 items in USD, 4 fictional suppliers
+`generate_sample_data.py` creates a fictional US hospital: 150 items in USD in six categories (medicines, IV fluids,
+consumables, laboratory, surgical, respiratory), 4 fictional suppliers
 (lead times 2 to 21 days), 3 years of daily usage (Nov 2023 to Oct 2026) with weekend dips, +4% growth per year,
 a flu season with a different severity each year, a summer trauma peak for some items, and a few
 deliberately expired or short-dated lots. The random seed is fixed, so the data is reproducible.
@@ -275,7 +277,6 @@ deliberately expired or short-dated lots. The random seed is fixed, so the data 
 | Limitation | Possible extension |
 |---|---|
 | σd is constant over the year, but forecast errors are larger in flu season | Month-specific σ from backtest errors |
-| One lot per delivery | Multi-lot receiving |
 | One primary + one backup vendor; switch only during a disruption | Several sources, approved substitutes, switch on partial backorders |
 | No invoices | Invoice from the vendor and three-way match (PO = receipt = invoice) |
 | Order quantities not rounded to case packs | Pack size per item; round up to full cases |

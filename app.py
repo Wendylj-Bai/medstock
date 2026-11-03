@@ -6,6 +6,7 @@ Then open the link it prints (usually http://localhost:8501).
 """
 
 import math
+import re
 import uuid
 
 import numpy as np
@@ -27,9 +28,14 @@ import kpis
 import planning
 import purchasing as pu
 import simulation as sim
+import ui
 
-st.set_page_config(page_title="MedStock", page_icon="🏥", layout="wide")
+ASSETS = Path(__file__).parent / "assets"
+st.set_page_config(page_title="MedStock", page_icon=str(ASSETS / "logo.png"), layout="wide")
 
+if st.query_params.get("open") == "demo":           # "Open the demo" links on the homepage
+    del st.query_params["open"]
+    st.session_state["view"] = "demo" if auth.current_user() else "login"
 _view = st.session_state.get("view", "home")
 if _view == "demo" and not auth.current_user():      # the demo needs a signed-in user
     _view = st.session_state["view"] = "login"
@@ -59,6 +65,28 @@ def n(count, word, plural=None):
     return f"{count:,} {word if count == 1 else plural or word + 's'}"
 
 
+KPI_TILES = {}          # container key -> (icon, color); drawn by ui.kpi_css at the end of the run
+
+
+def kpi(col, label, value, icon, color, **kw):
+    """A metric card with a colored icon tile in its corner (see ui.kpi_css)."""
+    key = "kpi_" + re.sub(r"\W+", "_", label.lower()).strip("_")
+    KPI_TILES[key] = (icon, color)
+    col.container(key=key).metric(label, value, **kw)
+
+
+PO_VIEW = ":material/description: Purchase orders"
+
+
+def open_purchase_order(order_no):
+    """Jump to Purchasing with this purchase order open (used as a button callback or before done())."""
+    st.session_state.update(page="Purchasing", open_order=order_no, goto_view=PO_VIEW)
+
+
+def section(title, question, icon, color):
+    st.html(ui.section(title, question, icon, color))
+
+
 def done(message):
     """Show a success message after the page reloads with the new numbers."""
     st.session_state["flash"] = message
@@ -66,26 +94,39 @@ def done(message):
 
 
 if "flash" in st.session_state:
-    st.toast(st.session_state.pop("flash"), icon="✅")
+    st.toast(st.session_state.pop("flash"), icon=":material/check_circle:")
 
 # ---------------------------------------------------------------------------
 # Sidebar: the policy knobs a hospital supply manager would control
 # ---------------------------------------------------------------------------
-s1, s2 = st.sidebar.columns(2)
-if s1.button("Back to project home", key="back_home"):
-    st.session_state["view"] = "home"
-    st.rerun()
-if s2.button("Sign out", key="sign_out", help=f"Signed in as {auth.current_user()}"):
-    auth.sign_out()
-    st.rerun()
-st.sidebar.title("🏥 MedStock")
-st.sidebar.caption("Hospital supply inventory planner")
-st.sidebar.subheader("🕒 Simulation clock")
-st.sidebar.markdown(f"**Today: {TODAY:%a, %b %d, %Y}**" + (" *(simulated)*" if SIMULATED else ""))
-k1, k2, k3 = st.sidebar.columns(3)
-step_1 = k1.button("+1 day", help="Simulate one day: wards use stock, vendors ship, deliveries arrive")
-step_7 = k2.button("+7 days", help="Simulate a week")
-step_next = k3.button("🚚 Next", help="Jump to the day the next delivery arrives")
+st.logo(str(ASSETS / "logo_wordmark.svg"), icon_image=str(ASSETS / "logo.svg"), size="large")
+st.html("<style>" + ui.APP_CSS + "</style>")
+
+# Menu: one button per page; only the open page is drawn (see the `if PAGE == ...` blocks below)
+PAGE_TITLES = [t for t, _, _ in ui.PAGES]
+if st.session_state.get("page") not in PAGE_TITLES:
+    st.session_state["page"] = "Dashboard"
+
+
+def open_page(page):
+    st.session_state["page"] = page
+
+
+with st.sidebar.container(key="nav_menu"):
+    st.html('<p class="ms-menu-label">Menu</p>')
+    for _title in PAGE_TITLES:
+        st.button(_title, key=ui.nav_key(_title), on_click=open_page, args=(_title,), width="stretch")
+PAGE = st.session_state["page"]
+
+with st.sidebar.container(key="sim_card"):
+    st.html(ui.section("Simulation clock", f"Today: {TODAY:%a, %b %d, %Y}" + (" (simulated)" if SIMULATED else ""),
+                       "clock", "violet"))
+    k1, k2 = st.columns(2)
+    step_1 = k1.button("+1 day", type="primary", width="stretch",
+                       help="Simulate one day: wards use stock, vendors ship, deliveries arrive")
+    step_7 = k2.button("+7 days", width="stretch", help="Simulate a week")
+    step_next = st.button("Next delivery", icon=":material/local_shipping:", width="stretch",
+                          help="Jump to the day the next delivery arrives")
 with st.sidebar.expander("Simulation settings"):
     auto_mode = st.radio("Automatic reordering", sim.AUTO_MODES, key="auto_mode",
                          help="What MedStock does each simulated evening for 🔴 items. Professional systems "
@@ -106,7 +147,7 @@ with st.sidebar.expander("Simulation settings"):
         st.session_state["reset_ok"] = False
         st.session_state["flash"] = "All data erased and the sample data reloaded. The clock is back to the real date."
 
-    st.button("🔄 Reset to fresh sample data", disabled=not really, on_click=reset_all)
+    st.button("Reset to fresh sample data", icon=":material/restart_alt:", disabled=not really, on_click=reset_all)
 st.sidebar.subheader("Service level by criticality (VED)")
 sl_v = st.sidebar.slider("Vital items", 0.80, 0.999, 0.99, 0.001, format="%.3f")
 sl_e = st.sidebar.slider("Essential items", 0.80, 0.999, 0.95, 0.005, format="%.3f")
@@ -126,6 +167,14 @@ with st.sidebar.expander("Smoothing constants"):
         "beta": st.slider("β trend", 0.05, 0.9, fc.DEFAULT_PARAMS["beta"], 0.05),
         "gamma": st.slider("γ seasonality", 0.05, 0.9, fc.DEFAULT_PARAMS["gamma"], 0.05),
     }
+st.sidebar.divider()
+s1, s2 = st.sidebar.columns(2)
+if s1.button("Project home", key="back_home", icon=":material/home:"):
+    st.session_state["view"] = "home"
+    st.rerun()
+if s2.button("Sign out", key="sign_out", icon=":material/logout:", help=f"Signed in as {auth.current_user()}"):
+    auth.sign_out()
+    st.rerun()
 
 
 if step_1 or step_7 or step_next:
@@ -134,7 +183,7 @@ if step_1 or step_7 or step_next:
         nxt = sim.next_arrival(conn)
         days = min(60, max(1, (nxt - TODAY).days)) if nxt else 0
     if days == 0:
-        st.sidebar.warning("No deliveries are on their way. Send a purchase order first (🛒 Purchasing).")
+        st.sidebar.warning("No deliveries are on their way. Send a purchase order first (Purchasing).")
     else:
         with st.spinner(f"Simulating {n(days, 'day')}…"):
             report = sim.advance(conn, days, {"V": sl_v, "E": sl_e, "D": sl_d},
@@ -189,7 +238,7 @@ stockouts = pd.read_sql("SELECT s.*, i.name, i.ved, i.unit FROM stockouts s JOIN
 # What happened during the last simulation run
 rep = st.session_state.get("sim_report")
 if rep:
-    with st.expander(f"🕒 Simulation report: {rep['start']:%b %d} to {rep['end']:%b %d} ({rep['days']} days)",
+    with st.expander(f":material/schedule: Simulation report: {rep['start']:%b %d} to {rep['end']:%b %d} ({rep['days']} days)",
                      expanded=True):
         m = st.columns(5)
         m[0].metric("Units requested", f"{rep['demand']:,}")
@@ -207,24 +256,24 @@ if rep:
             st.error("Stockouts: " + ", ".join(f"**{r.item}** ({r.ved}, {r.units_short:,} short over {n(r.days, 'day')})"
                                                for r in worst.head(6).itertuples()))
         for ev in rep.get("events", []):
-            st.warning(f"**{ev['date']:%b %d}**: {ev['event']}. See 🚨 Recalls & disruptions.")
+            st.warning(f"**{ev['date']:%b %d}**: {ev['event']}. See Recalls & disruptions.")
         if rep["received"]:
             st.dataframe(pd.DataFrame(rep["received"]), hide_index=True, width="stretch")
         if rep["drafted"]:
-            st.info(f"📝 Drafts waiting for your approval: {', '.join(rep['drafted'])} (🛒 Purchasing).")
+            st.info(f"Drafts waiting for your approval: {', '.join(rep['drafted'])}.")
+            st.button("Review drafts in Purchasing", icon=":material/arrow_forward:", icon_position="right",
+                      key="report_drafts", on_click=open_purchase_order, args=(rep["drafted"][0],))
         if st.button("Close report"):
             st.session_state.pop("sim_report")
             st.rerun()
 
-(tab_dash, tab_kpi, tab_buy, tab_move, tab_risk, tab_fc, tab_exp, tab_item, tab_hist, tab_abc, tab_calc,
- tab_help) = st.tabs(
-    ["📋 Dashboard", "📊 KPIs", "🛒 Purchasing", "📦 Stock movements", "🚨 Recalls & disruptions", "📈 Forecast",
-     "⏳ Expiry", "🔎 Item detail", "📜 History", "🅰️ ABC-VED analysis", "🧮 Calculators", "📖 Help"])
+recalls_14d = recall_list[pd.to_datetime(recall_list["date"]) > pd.Timestamp(TODAY) - pd.Timedelta(days=14)]
+st.html("<style>" + ui.nav_css(PAGE, {"Recalls & disruptions": len(active_outages) + len(recalls_14d)}) + "</style>")
 
 # ---------------------------------------------------------------------------
-# Help tab: the user guide (docs/USER_GUIDE.md), shown inside the app
+# Help page: the user guide (docs/USER_GUIDE.md), shown inside the app
 # ---------------------------------------------------------------------------
-with tab_help:
+if PAGE == "Help":
     guide = Path(__file__).parent / "docs" / "USER_GUIDE.md"
     if guide.exists():
         st.markdown(guide.read_text(encoding="utf-8"))
@@ -233,9 +282,9 @@ with tab_help:
     st.caption("Technical details (formulas, data model, design decisions): docs/HOW_IT_WORKS.md")
 
 # ---------------------------------------------------------------------------
-# Dashboard tab: what needs ordering today?
+# Dashboard page: what needs ordering today?
 # ---------------------------------------------------------------------------
-with tab_dash:
+if PAGE == "Dashboard":
     st.header("Today's reorder dashboard")
     red = plan[plan["status"].str.startswith("🔴")]
     yellow = plan[plan["status"].str.startswith("🟡")]
@@ -244,13 +293,15 @@ with tab_dash:
     vital_at_risk = at_risk[at_risk["ved"] == "V"]
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🔴 Order now", len(red))
-    c2.metric("🟡 Order soon", len(yellow))
-    c3.metric("Vital items at risk", len(vital_at_risk),
+    st.html("<style>" + ui.kpi_css({"kpi_now": ("cart", "red"), "kpi_soon": ("clock", "amber"),
+                                    "kpi_vital": ("heart", "violet"), "kpi_value": ("dollar", "blue")}) + "</style>")
+    c1.container(key="kpi_now").metric("Order now", len(red))
+    c2.container(key="kpi_soon").metric("Order soon", len(yellow))
+    c3.container(key="kpi_vital").metric("Vital items at risk", len(vital_at_risk),
               help="Vital (V) items flagged by the availability projection: zero usable stock, or their "
                    "usable stock runs out before the next reliable delivery. This is about what we can "
                    "physically give patients, independent of the reorder point.")
-    c4.metric("Inventory value on hand", f"${(plan['on_hand'] * plan['unit_cost']).sum():,.0f}")
+    c4.container(key="kpi_value").metric("Inventory value on hand", f"${(plan['on_hand'] * plan['unit_cost']).sum():,.0f}")
 
     if len(vital_at_risk):
         st.error("**Vital items at risk:** " + ", ".join(
@@ -259,28 +310,30 @@ with tab_dash:
             + "Check the reorder plan and any open purchases below.")
     for o in active_outages.itertuples():
         n_items = int((plan["supplier"] == o.supplier).sum())
-        st.error(f"🏭 **{o.supplier} cannot supply** until {pd.Timestamp(o.end_date):%b %d} ({o.reason}). "
+        st.error(f"**{o.supplier} cannot supply** until {pd.Timestamp(o.end_date):%b %d} ({o.reason}). "
                  f"New orders for its {n(n_items, 'item')} go to their backup vendor at +{pu.BACKUP_PREMIUM:.0%}. "
-                 "See 🚨 Recalls & disruptions.")
+                 "See Recalls & disruptions.")
     new_recalls = recall_list[pd.to_datetime(recall_list["date"]) > pd.Timestamp(TODAY) - pd.Timedelta(days=14)]
     for r in new_recalls.itertuples():
-        st.error(f"🚨 **Recall (Class {r.recall_class})**: lot {r.lot_no} of {r.name}, {r.reason}. "
+        st.error(f"**Recall (Class {r.recall_class})**: lot {r.lot_no} of {r.name}, {r.reason}. "
                  f"{r.qty_removed:,} pulled from the shelf; wards that received it: {r.wards}.")
     if len(po_list):
         at_dock = po_list[po_list["stage"] == "ARRIVED"]
         late = po_list[po_list["late"]]
         if len(at_dock):
-            st.warning(f"📦 {len(at_dock)} deliver{'y is' if len(at_dock) == 1 else 'ies are'} waiting at the "
-                       f"receiving dock ({', '.join(at_dock['order_no'])}). Receive them in 🛒 Purchasing: "
+            st.warning(f"{len(at_dock)} deliver{'y is' if len(at_dock) == 1 else 'ies are'} waiting at the "
+                       f"receiving dock ({', '.join(at_dock['order_no'])}). Receive them in Purchasing: "
                        "stock on the dock cannot be issued.")
+            st.button("Receive in Purchasing", icon=":material/arrow_forward:", icon_position="right",
+                      key="dock_receive", on_click=open_purchase_order, args=(at_dock["order_no"].iloc[0],))
         if len(late):
-            st.warning("⏰ Late vendor deliveries: " + ", ".join(
+            st.warning("Late vendor deliveries: " + ", ".join(
                 f"{r.order_no} from {r.supplier} (promised {pd.Timestamp(r.promised_date):%b %d})"
                 for r in late.itertuples()) + ". This is why safety stock covers lead-time variability (σL).")
     recent_so = stockouts[stockouts["date"] > pd.Timestamp(TODAY) - pd.Timedelta(days=30)]
     if len(recent_so):
         by_item = recent_so.groupby(["name", "ved"])["qty_short"].sum().reset_index()
-        st.error(f"🚫 Stockouts in the last 30 days: {n(len(recent_so), 'event')}. " + ", ".join(
+        st.error(f"Stockouts in the last 30 days: {n(len(recent_so), 'event')}. " + ", ".join(
             f"{r.name} ({r.ved}, {r.qty_short:,} short)" for r in by_item.itertuples()))
     expired = lot_risk[lot_risk["days_left"] <= 0]
     soon = lot_risk[(lot_risk["days_left"] > 0) & (lot_risk["days_left"] <= 30)]
@@ -290,12 +343,12 @@ with tab_dash:
     if len(soon):
         parts.append(f"{n(len(soon), 'lot')} expiring within 30 days")
     if parts:
-        st.warning("⏳ " + " and ".join(parts) + ". See the ⏳ Expiry tab.")
+        st.warning("" + " and ".join(parts) + ". See the Expiry page.")
     if len(rising):
         names = ", ".join(f"{r.name} (+{r.change_90:.0%})" for r in rising.head(5).itertuples())
         more = f" and {len(rising) - 5} more" if len(rising) > 5 else ""
-        st.info(f"📈 Demand is forecast to rise over the next 90 days for {len(rising)} items: {names}{more}. "
-                "Reorder points already include this rise. See the 📈 Forecast tab.")
+        st.info(f"Demand is forecast to rise over the next 90 days for {len(rising)} items: {names}{more}. "
+                "Reorder points already include this rise. See the Forecast page.")
 
     STATUSES = ["🔴 Order now", "🟡 Order soon", "🟢 OK"]
     RISKS = ["🔴 No usable stock", "🔴 Shortage risk", "🟡 Shortage watch", "🟢 Enough stock"]
@@ -364,9 +417,11 @@ with tab_dash:
     drafted = pu.items_in_drafts(conn)
     to_order = red[(red["order_qty"] > 0) & ~red["item_id"].isin(drafted)]
     if drafted:
-        st.info(f"📝 {n(len(set(drafted.values())), 'draft PO')} with {n(len(drafted), 'item')} "
+        st.info(f"{n(len(set(drafted.values())), 'draft PO')} with {n(len(drafted), 'item')} "
                 f"{'is' if len(set(drafted.values())) == 1 else 'are'} waiting for approval "
-                "in 🛒 Purchasing. A draft is not an order yet: the vendor has not received it.")
+                "in Purchasing. A draft is not an order yet: the vendor has not received it.")
+        st.button("Review drafts in Purchasing", icon=":material/arrow_forward:", icon_position="right",
+                  key="review_drafts", on_click=open_purchase_order, args=(sorted(set(drafted.values()))[0],))
     if len(to_order):
         to_order = to_order.assign(order_value=np.where(to_order["order_vendor"] != to_order["supplier"],
                                                         to_order["order_value"] * (1 + pu.BACKUP_PREMIUM),
@@ -386,21 +441,25 @@ with tab_dash:
         if sugg.empty:
             st.warning("Items need ordering, but their primary AND backup vendors are both disrupted. "
                        "Watch stock closely and consider substitutes until a vendor is back.")
-        elif st.button(f"📝 Prepare {n(len(sugg), 'draft purchase order')}, one per vendor", type="primary"):
+        elif st.button(f"Prepare {n(len(sugg), 'draft purchase order')}, one per vendor", icon=":material/edit_note:",
+                           type="primary", key="prepare_drafts"):
             made = pu.draft_suggested_orders(conn, plan)
-            done(f"Drafted {', '.join(made)} with the suggested quantities. Review and send them in 🛒 Purchasing.")
+            if made:
+                open_purchase_order(made[0])          # take the buyer straight to the first draft
+            done(f"Drafted {', '.join(made)} with the suggested quantities. Review each one and approve it to "
+                 "send it to the vendor.")
         st.caption("Quantities, prices and vendors are filled in for you. You review, adjust and approve them in "
-                   "🛒 Purchasing before anything is sent to a vendor.")
+                   "Purchasing before anything is sent to a vendor.")
     elif not drafted:
         st.success("Nothing to order right now. Everything at risk is already on order.")
 
     st.subheader("Measured fill rate from logged requests")
     st.caption("These are ACTUAL requests logged in this app (manual ward issues and simulated demand) since it "
                "was set up, not synthetic history. The table shows what was served vs. what was short. Compare "
-               "it with the *predicted* fill rate shown in 🔎 Item detail (from the service level).")
+               "it with the *predicted* fill rate shown in Item detail (from the service level).")
     requests = pd.read_sql("SELECT * FROM demand_requests", conn)
     if requests.empty:
-        st.info("No ward requests have been logged yet. Record them in 📦 Stock movements > Issue to ward, or run "
+        st.info("No ward requests have been logged yet. Record them in Stock movements > Issue to ward, or run "
                 "the simulation; every request (served or short) is counted here.")
     else:
         measured = requests.groupby("item_id").agg(requests=("requested", "sum"),
@@ -419,7 +478,7 @@ with tab_dash:
                   help="Served ÷ requested across all logged requests.")
 
 # ---------------------------------------------------------------------------
-# Stock movements tab: record what physically happens in the storeroom
+# Stock movements page: record what physically happens in the storeroom
 # ---------------------------------------------------------------------------
 def run(action, *args, **kwargs):
     """Call a db function; show a friendly error instead of crashing."""
@@ -439,13 +498,13 @@ def item_row(item_id):
 
 
 # ---------------------------------------------------------------------------
-# KPIs tab: is inventory management working, and is it getting better?
+# KPIs page: is inventory management working, and is it getting better?
 # ---------------------------------------------------------------------------
 def pct(x, digits=1):
     return "n/a" if x is None or pd.isna(x) else f"{x:.{digits}%}"
 
 
-with tab_kpi:
+if PAGE == "KPIs":
     st.header("Key performance indicators")
     PERIODS = {"Last 30 days": 30, "Last 90 days": 90, "Last 365 days": 365}
     period = st.radio("Period", list(PERIODS), index=1, horizontal=True, key="kpi_period")
@@ -455,36 +514,43 @@ with tab_kpi:
                "logging requests, and inventory KPIs start when the stock ledger starts"
                + (f" ({k['inventory_since']:%b %d, %Y})." if k["inventory_since"] else "."))
 
-    st.subheader("Service: are patients getting what they need?")
+    section("Service", "Are patients getting what they need?", "heart", "green")
     c = st.columns(4)
-    c[0].metric("Fill rate", pct(k["fill_rate"], 2), help="Units served ÷ units requested. Target 98%+.")
-    c[1].metric("Vital fill rate", pct(k["fill_by_ved"]["V"], 2), help="Same, Vital items only. Target 99.5%+.")
-    c[2].metric("Stockout events", k["stockout_events"], help="Item-days on which a request could not be filled in full")
-    c[3].metric("…of which Vital", k["vital_stockout_events"])
+    kpi(c[0], "Fill rate", pct(k["fill_rate"], 2), "check", "green",
+        help="Units served ÷ units requested. Target 98%+.")
+    kpi(c[1], "Vital fill rate", pct(k["fill_by_ved"]["V"], 2), "heart", "violet",
+        help="Same, Vital items only. Target 99.5%+.")
+    kpi(c[2], "Stockout events", k["stockout_events"], "alert", "red",
+        help="Item-days on which a request could not be filled in full")
+    kpi(c[3], "Vital stockout events", k["vital_stockout_events"], "alert", "amber",
+        help="Stockout events for Vital items only")
 
-    st.subheader("Money: how much is tied up, and how much is lost?")
+    section("Money", "How much is tied up, and how much is lost?", "dollar", "blue")
     c = st.columns(4)
-    c[0].metric("Average inventory", f"${k['avg_inventory']:,.0f}" if k["avg_inventory"] else "n/a",
-                help="Average dollar value on the shelf over the period")
-    c[1].metric("Inventory turns (per year)", f"{k['turns']:.1f}" if k["turns"] else "n/a",
-                help="Yearly value issued ÷ average inventory. Higher = leaner. Hospital supplies often run 8-12.")
-    c[2].metric("Days on hand", f"{k['days_on_hand']:.0f}" if k["days_on_hand"] else "n/a",
-                help="How many days the average stock would last at the current usage rate")
-    c[3].metric("Waste (expiry, damage, recalls)", f"${k['waste_total']:,.0f}",
-                help="Written-off value plus stock pulled by recalls")
+    kpi(c[0], "Average inventory", f"${k['avg_inventory']:,.0f}" if k["avg_inventory"] else "n/a", "dollar", "blue",
+        help="Average dollar value on the shelf over the period")
+    kpi(c[1], "Inventory turns per year", f"{k['turns']:.1f}" if k["turns"] else "n/a", "repeat", "violet",
+        help="Yearly value issued ÷ average inventory. Higher = leaner. Hospital supplies often run 8-12.")
+    kpi(c[2], "Days on hand", f"{k['days_on_hand']:.0f}" if k["days_on_hand"] else "n/a", "calendar", "amber",
+        help="How many days the average stock would last at the current usage rate")
+    kpi(c[3], "Waste", f"${k['waste_total']:,.0f}", "trash", "red",
+        help="Written-off value (expiry, damage) plus stock pulled by recalls")
     if k["waste_total"]:
         parts = [f"{r}: ${v:,.0f}" for r, v in k["waste_by_reason"].items()]
         if k["recall_value"]:
             parts.append(f"Recalls: ${k['recall_value']:,.0f}")
         st.caption("Waste by reason: " + " · ".join(parts))
 
-    st.subheader("Supply: are vendors reliable?")
+    section("Supply", "Are vendors reliable?", "truck", "violet")
     c = st.columns(4)
-    c[0].metric("On-time deliveries", pct(k["on_time"], 0), help="Arrived by the vendor's promised date")
-    c[1].metric("Vendor fill rate", pct(k["vendor_fill"]), help="Units confirmed ÷ units ordered (backorders lower it)")
-    c[2].metric("Orders rejected", k["rejected_orders"], help="Rejected by a vendor during a supply disruption")
-    c[3].metric("Spend with backup vendors", pct(k["backup_share"]),
-                help=f"Share of purchasing spend (${k['spend']:,.0f}) placed with a backup vendor at a higher price")
+    kpi(c[0], "On-time deliveries", pct(k["on_time"], 0), "clock", "green",
+        help="Arrived by the vendor's promised date")
+    kpi(c[1], "Vendor fill rate", pct(k["vendor_fill"]), "truck", "blue",
+        help="Units confirmed ÷ units ordered (backorders lower it)")
+    kpi(c[2], "Orders rejected", k["rejected_orders"], "xcircle", "red",
+        help="Rejected by a vendor during a supply disruption")
+    kpi(c[3], "Spend with backup vendors", pct(k["backup_share"]), "users", "amber",
+        help=f"Share of purchasing spend (${k['spend']:,.0f}) placed with a backup vendor at a higher price")
     st.caption(f"{n(k['recalls'], 'recall')} and {n(k['outage_days'], 'vendor-disruption day')} in this period.")
     if not k["vendors"].empty:
         st.dataframe(k["vendors"], hide_index=True, width="stretch", column_config={
@@ -494,10 +560,10 @@ with tab_kpi:
             "fill_rate": st.column_config.ProgressColumn("Fill rate", format="percent", min_value=0, max_value=1),
             "rejected_orders": "Rejected orders"})
 
-    st.subheader("Trend by week")
+    section("Trend by week", "Is it getting better or worse?", "trend", "violet")
     wk = kpis.weekly(conn, k_start, TODAY)
     if wk.empty:
-        st.info("No activity in this period yet. Move the 🕒 clock forward to generate some.")
+        st.info("No activity in this period yet. Move the clock forward to generate some.")
     else:
         g1, g2 = st.columns(2)
         fig = px.line(wk, x="week", y="fill_rate", markers=True, title="Fill rate")
@@ -513,15 +579,15 @@ with tab_kpi:
                    "safety stock manages.")
 
 # ---------------------------------------------------------------------------
-# Recalls & disruptions tab: when the supply chain goes wrong
+# Recalls & disruptions page: when the supply chain goes wrong
 # ---------------------------------------------------------------------------
-with tab_risk:
+if PAGE == "Recalls & disruptions":
     st.header("Recalls & vendor disruptions")
     st.caption("Fictional, simulated events. Use them to see how the reorder system reacts: a recall removes "
                "stock at once, and a disruption forces orders to a backup vendor. Turn on **Random events** in "
                "the sidebar's Simulation settings to let them happen on their own.")
 
-    st.subheader("🚨 Product recalls")
+    section("Product recalls", "A lot is unsafe. Where is it, and who already received it?", "alert", "red")
     st.markdown("A manufacturer (or the FDA) recalls a **lot**. Every unit still on the shelf is pulled, wards "
                 "that already received it are notified, and incoming deliveries of that lot are refused.")
     lots_on_hand = lots[lots["qty"] > 0].merge(plan[["item_id", "name", "ved"]], on="item_id")
@@ -536,8 +602,8 @@ with tab_risk:
                            format_func=events.RECALL_CLASSES.get, key="recall_class")
         reason = st.selectbox("Reason", events.RECALL_REASONS, key="recall_reason")
         r1, r2 = st.columns(2)
-        do_recall = r1.form_submit_button("🚨 Issue recall for this lot", type="primary", disabled=not lot_opts)
-        do_random = r2.form_submit_button("🎲 Simulate a random manufacturer recall")
+        do_recall = r1.form_submit_button("Issue recall for this lot", icon=":material/warning:", type="primary", disabled=not lot_opts)
+        do_random = r2.form_submit_button("Simulate a random manufacturer recall", icon=":material/shuffle:")
     if do_recall or do_random:
         res, err = (run(events.recall_lot, lot_pick, cls, reason) if do_recall else run(events.random_recall))
         if not err and res:
@@ -555,10 +621,10 @@ with tab_risk:
                                     "qty_removed": "Pulled from shelf",
                                     "value_removed": st.column_config.NumberColumn("Value lost", format="$%,.0f"),
                                     "wards": "Already issued to (notify)", "origin": "Source"})
-        st.caption("What happens next: usable stock dropped, so the item may now be 🔴 on the 📋 Dashboard and "
-                   "get reordered. Full movement history of any lot: 📜 History > Lot trace.")
+        st.caption("What happens next: usable stock dropped, so the item may now be 🔴 on the Dashboard and "
+                   "get reordered. Full movement history of any lot: History > Lot trace.")
 
-    st.subheader("🏭 Vendor disruptions")
+    section("Vendor disruptions", "A vendor cannot supply. Where do orders go instead?", "factory", "amber")
     st.markdown("A vendor cannot supply for a while (plant shutdown, shortage, storm, cyberattack). Orders it "
                 "receives are **rejected**, and new orders for its items go to each item's **backup vendor** "
                 f"(+{pu.BACKUP_PREMIUM:.0%} price, its own lead time). Items already on the way still arrive.")
@@ -568,8 +634,8 @@ with tab_risk:
         o_days = f2.number_input("Days", 1, 90, 14, key="outage_days")
         o_reason = f3.selectbox("Reason", events.OUTAGE_REASONS, key="outage_reason")
         o1, o2 = st.columns(2)
-        do_outage = o1.form_submit_button("🏭 Start disruption", type="primary")
-        do_random_outage = o2.form_submit_button("🎲 Simulate a random disruption")
+        do_outage = o1.form_submit_button("Start disruption", icon=":material/factory:", type="primary")
+        do_random_outage = o2.form_submit_button("Simulate a random disruption", icon=":material/shuffle:")
     if do_outage or do_random_outage:
         res, err = (run(events.start_outage, o_vendor, int(o_days), o_reason) if do_outage
                     else run(events.random_outage))
@@ -590,24 +656,25 @@ with tab_risk:
             st.markdown(f"**{o.supplier}**: {n(len(affected), 'item')} {'switches' if len(affected) == 1 else 'switch'} to "
                         "the backup vendor: " + ", ".join(
                 f"{r.name} (now from {r.backup_supplier})" for r in affected.itertuples()))
-            if st.button(f"✅ {o.supplier} is supplying again", key=f"end_outage_{o.outage_id}"):
+            if st.button(f"{o.supplier} is supplying again", icon=":material/check_circle:", key=f"end_outage_{o.outage_id}"):
                 _, err = run(events.end_outage, o.supplier)
                 if not err:
                     done(f"{o.supplier} is back. New orders go to it again.")
 
 # ---------------------------------------------------------------------------
-# Purchasing tab: vendor purchase orders, from draft to delivery (vendors are simulated)
+# Purchasing page: vendor purchase orders, from draft to delivery (vendors are simulated)
 # ---------------------------------------------------------------------------
 def stage_bar(current):
-    """📝 Draft → 📤 Sent → … with the current stage in bold."""
+    """The order's progress as a step tracker: done steps filled, the current step ringed."""
     if current == "CANCELLED":
-        return "❌ **Cancelled**"
+        return '<span class="ms-cancel">Cancelled</span>'
     now = pu.STAGES.index(current)
-    parts = []
-    for n, name in enumerate(pu.STAGES):
-        label = pu.STAGE_LABELS[name].split(" (")[0]
-        parts.append(f"**{label}**" if n == now else label if n < now else f"<span style='opacity:.35'>{label}</span>")
-    return " → ".join(parts)
+    steps = []
+    for i, name in enumerate(pu.STAGES):
+        state = "done" if i < now else "now" if i == now else ""
+        mark = "✓" if i < now else str(i + 1)
+        steps.append(f'<div class="ms-step {state}"><i>{mark}</i><span>{pu.STAGE_LABELS[name].split(" (")[0]}</span></div>')
+    return '<div class="ms-steps">' + "".join(steps) + "</div>"
 
 
 def vendor_card(name):
@@ -627,30 +694,30 @@ def order_summary(supplier, subtotal):
         st.warning(f"Below {supplier}'s minimum order of ${v['min_order']:,}. The vendor may reject it or charge "
                    "a small-order fee. Consider adding items that will need ordering soon (🟡).")
     elif fr and subtotal >= 0.5 * v["free_freight_over"]:
-        st.caption(f"💡 ${v['free_freight_over'] - subtotal:,.0f} more and freight is free.")
+        st.caption(f"${v['free_freight_over'] - subtotal:,.0f} more and freight is free.")
 
 
-with tab_buy:
+if PAGE == "Purchasing":
     st.header("Purchasing")
     st.caption("One purchase order (PO) per vendor, one line per item. MedStock fills in vendor, quantities and "
                "prices; you review and approve. Vendors are **fictional** and respond on their own schedule: move "
-               "time forward with the 🕒 simulation clock in the sidebar.")
+               "time forward with the simulation clock in the sidebar.")
     stage_counts = po_list["stage"].value_counts() if len(po_list) else pd.Series(dtype=int)
     m = st.columns(5)
-    m[0].metric("📝 Drafts to approve", int(stage_counts.get("DRAFT", 0)))
-    m[1].metric("📤 With the vendor", int(stage_counts.get("SENT", 0) + stage_counts.get("CONFIRMED", 0)))
-    m[2].metric("🚚 In transit", int(stage_counts.get("SHIPPED", 0)))
-    m[3].metric("📦 At the dock", int(stage_counts.get("ARRIVED", 0)))
-    m[4].metric("⏰ Late", int(po_list["late"].sum()) if len(po_list) else 0)
+    kpi(m[0], "Drafts to approve", int(stage_counts.get("DRAFT", 0)), "edit", "violet")
+    kpi(m[1], "With the vendor", int(stage_counts.get("SENT", 0) + stage_counts.get("CONFIRMED", 0)), "send", "blue")
+    kpi(m[2], "In transit", int(stage_counts.get("SHIPPED", 0)), "truck", "green")
+    kpi(m[3], "At the dock", int(stage_counts.get("ARRIVED", 0)), "box", "amber")
+    kpi(m[4], "Late", int(po_list["late"].sum()) if len(po_list) else 0, "clock", "red")
 
     if "goto_view" in st.session_state:                 # switch view after creating a PO
         st.session_state["buy_view"] = st.session_state.pop("goto_view")
-    buy_view = st.radio("View", ["📄 Purchase orders", "➕ New purchase order", "🏢 Vendors"],
+    buy_view = st.radio("View", [":material/description: Purchase orders", ":material/add_circle: New purchase order", ":material/storefront: Vendors"],
                         horizontal=True, key="buy_view", label_visibility="collapsed")
 
-    if buy_view == "📄 Purchase orders":
+    if buy_view == ":material/description: Purchase orders":
         if po_list.empty:
-            st.info("No purchase orders yet. Prepare them from the 📋 Dashboard or create one under ➕ New purchase order.")
+            st.info("No purchase orders yet. Prepare them from the Dashboard or create one under New purchase order.")
         else:
             open_only = st.toggle("Open orders only", value=True)
             pl = po_list[~po_list["stage"].isin(["RECEIVED", "CANCELLED"])] if open_only else po_list
@@ -681,12 +748,12 @@ with tab_buy:
                                                               f"{label.at[o, 'status']}")
                 drafts_left = [o for o in ids if label.at[o, "stage"] == "DRAFT" and o != order_no]
                 if drafts_left:
-                    st.caption(f"📝 {n(len(drafts_left), 'more draft')} waiting for approval: " +
+                    st.caption(f"{n(len(drafts_left), 'more draft')} waiting for approval: " +
                                ", ".join(f"{o} ({label.at[o, 'supplier']})" for o in drafts_left))
                 h = pu.order_header(conn, order_no)
                 current = pu.stage(h, TODAY)
                 lines = pu.order_lines(conn, order_no)
-                st.markdown(stage_bar(current), unsafe_allow_html=True)
+                st.html(stage_bar(current))
 
                 with st.container(border=True):
                     a, b = st.columns(2)
@@ -697,7 +764,7 @@ with tab_buy:
 
                     if current == "DRAFT":
                         if pu.active_outage(conn, h["supplier"], TODAY):
-                            st.error(f"🏭 {h['supplier']} cannot supply right now: if you send this order it "
+                            st.error(f"{h['supplier']} cannot supply right now: if you send this order it "
                                      "will be rejected. Delete it and order from the backup vendor instead.")
                         st.markdown("**Lines** (edit the quantities; 0 removes a line)")
                         r_by_id = plan.set_index("item_id")
@@ -726,7 +793,7 @@ with tab_buy:
                                                 min_value=TODAY, key=f"need_{order_no}")
                         notes = c2.text_input("Notes to vendor", value=h["notes"] or "", key=f"notes_{order_no}")
                         b1, b2, b3 = st.columns(3)
-                        if b1.button("✅ Approve & send to vendor", type="primary", key=f"send_{order_no}"):
+                        if b1.button("Approve & send to vendor", icon=":material/send:", type="primary", key=f"send_{order_no}"):
                             _, err = run(pu.update_draft, order_no, new_lines, need_by, notes)
                             if not err:
                                 _, err = run(pu.send_order, order_no)
@@ -736,11 +803,11 @@ with tab_buy:
                                 done(f"{order_no} sent to {h['supplier']} via {pu.VENDORS[h['supplier']]['method']}. " +
                                      (f"Next draft: {nxt} ({label.at[nxt, 'supplier']})." if drafts_left else
                                       "No drafts left. Move the clock forward to see the vendors respond."))
-                        if b2.button("💾 Save changes", key=f"save_{order_no}"):
+                        if b2.button("Save changes", icon=":material/save:", key=f"save_{order_no}"):
                             _, err = run(pu.update_draft, order_no, new_lines, need_by, notes)
                             if not err:
                                 done(f"{order_no} saved (still a draft).")
-                        if b3.button("🗑️ Delete draft", key=f"del_{order_no}"):
+                        if b3.button("Delete draft", icon=":material/delete:", key=f"del_{order_no}"):
                             _, err = run(pu.cancel_order, order_no, "Draft deleted")
                             if not err:
                                 if drafts_left:
@@ -750,10 +817,13 @@ with tab_buy:
                         acked = h["ack_date"] and h["ack_date"] <= TODAY.isoformat()
                         shipped = h["ship_date"] and h["ship_date"] <= TODAY.isoformat()
                         hidden = pd.Series(None, index=lines.index, dtype=object)
+                        asn = {p: db.asn_lots(conn, p) for p in lines["po_id"]} if shipped else {}
                         show = lines.assign(              # only show what the vendor has told us so far
                             confirmed=lines["confirmed_qty"] if acked else hidden,
-                            lot=lines["asn_lot_no"] if shipped else hidden,
-                            expiry=lines["asn_expiry"] if shipped else hidden)
+                            lot=[", ".join(l for l, _, _ in asn.get(p, [])) or None for p in lines["po_id"]]
+                            if shipped else hidden,
+                            expiry=[min((e for _, e, _ in asn.get(p, [])), default=None) for p in lines["po_id"]]
+                            if shipped else hidden)
                         st.dataframe(show[["line_no", "item_id", "name", "unit", "qty", "confirmed", "unit_cost",
                                            "amount", "lot", "expiry", "status", "received_qty"]],
                                      hide_index=True, width="stretch", column_config={
@@ -762,7 +832,7 @@ with tab_buy:
                                              "Confirmed", help="What the vendor confirmed it can supply (after acknowledgement)"),
                                          "unit_cost": st.column_config.NumberColumn("Unit price", format="$%.2f"),
                                          "amount": st.column_config.NumberColumn("Amount", format="$%,.2f"),
-                                         "lot": st.column_config.TextColumn("Lot (ASN)", help="From the vendor's ship notice"),
+                                         "lot": st.column_config.TextColumn("Lots (ASN)", help="From the vendor's ship notice. One line can arrive as several lots."),
                                          "expiry": "Expiry (ASN)", "received_qty": "Received"})
                         order_summary(h["supplier"], float(lines["amount"].sum()))
 
@@ -772,34 +842,34 @@ with tab_buy:
                 if current in ("SENT", "CONFIRMED", "SHIPPED"):
                     eta = h["arrive_date"] if current == "SHIPPED" else h["promised_date"]
                     st.caption(f"Next: {'delivery' if current == 'SHIPPED' else 'the vendor ships it'}. "
-                               f"Expected around {pd.Timestamp(eta):%b %d}. Use 🚚 Next in the sidebar to jump ahead.")
+                               f"Expected around {pd.Timestamp(eta):%b %d}. Use Next in the sidebar to jump ahead.")
 
                 c1, c2, c3 = st.columns(3)
                 if current == "ARRIVED":
-                    if c1.button("📥 Receive whole shipment (as per ASN)", type="primary", key=f"recv_{order_no}"):
+                    if c1.button("Receive whole shipment (as per ASN)", icon=":material/inventory:", type="primary", key=f"recv_{order_no}"):
                         got, err = run(pu.receive_order, order_no)
                         if not err:
                             done(f"Received {order_no}: " + ", ".join(f"{n} × {q:,} (lot {l}, lead time {lt} d)"
                                                                     for n, q, l, lt in got))
-                    c1.caption("Different quantity or lot on the boxes? Receive line by line in 📦 Stock movements.")
+                    c1.caption("Different quantity or lot on the boxes? Receive line by line in Stock movements.")
                 if current in ("SENT", "CONFIRMED"):
-                    if c2.button("❌ Cancel order", key=f"cancel_{order_no}"):
+                    if c2.button("Cancel order", icon=":material/cancel:", key=f"cancel_{order_no}"):
                         _, err = run(pu.cancel_order, order_no, "Cancelled by buyer")
                         if not err:
                             done(f"{order_no} cancelled.")
-                c3.download_button("⬇️ Download PO document", pu.po_document_html(conn, order_no),
-                                   f"{order_no}.html", "text/html", key=f"doc_{order_no}",
+                c3.download_button("Download PO document", pu.po_document_html(conn, order_no),
+                                   f"{order_no}.html", "text/html", key=f"doc_{order_no}", icon=":material/download:",
                                    help="A printable purchase order (open it in your browser and print or save as PDF)")
 
-    elif buy_view == "➕ New purchase order":
+    elif buy_view == ":material/add_circle: New purchase order":
         vendor_names = list(pu.VENDORS)
         red_counts = plan[plan["status"].str.startswith("🔴")].groupby("order_vendor").size()
         down = set(active_outages["supplier"])
         supplier = st.selectbox("Vendor", vendor_names,
                                 format_func=lambda v: f"{v} ({n(int(red_counts.get(v, 0)), 'item')} to order now)"
-                                                      + (" · 🏭 DISRUPTED" if v in down else ""))
+                                                      + (" · DISRUPTED" if v in down else ""))
         if supplier in down:
-            st.error(f"🏭 {supplier} cannot supply right now. Orders sent to it will be rejected.")
+            st.error(f"{supplier} cannot supply right now. Orders sent to it will be rejected.")
         with st.container(border=True):
             st.markdown(vendor_card(supplier))
         vi = plan[(plan["supplier"] == supplier) | (plan["backup_supplier"] == supplier)]
@@ -840,18 +910,18 @@ with tab_buy:
         notes = c2.text_input("Notes to vendor", key="new_notes", placeholder="e.g. deliver to dock B before noon")
         b1, b2 = st.columns(2)
         lines_in = list(zip(chosen["item_id"], chosen["qty"]))
-        if b1.button("✅ Approve & send to vendor", type="primary", disabled=chosen.empty):
+        if b1.button("Approve & send to vendor", icon=":material/send:", type="primary", disabled=chosen.empty):
             order_no, err = run(pu.create_order, supplier, lines_in, need_by, notes)
             if not err:
                 _, err = run(pu.send_order, order_no)
             if not err:
-                st.session_state.update(open_order=order_no, goto_view="📄 Purchase orders")
+                st.session_state.update(open_order=order_no, goto_view=PO_VIEW)
                 done(f"{order_no} sent to {supplier}. Move the clock forward to see the vendor respond.")
-        if b2.button("💾 Save as draft", disabled=chosen.empty):
+        if b2.button("Save as draft", icon=":material/save:", disabled=chosen.empty):
             order_no, err = run(pu.create_order, supplier, lines_in, need_by, notes)
             if not err:
-                st.session_state.update(open_order=order_no, goto_view="📄 Purchase orders")
-                done(f"Draft {order_no} saved. Approve it in 📄 Purchase orders.")
+                st.session_state.update(open_order=order_no, goto_view=PO_VIEW)
+                done(f"Draft {order_no} saved. Approve it in Purchase orders.")
 
     else:
         st.subheader("Vendor directory")
@@ -862,7 +932,7 @@ with tab_buy:
                                    "min order": v["min_order"], "free freight over": v["free_freight_over"],
                                    "items": int((plan["supplier"] == n).sum()),
                                    "backup for": int((plan["backup_supplier"] == n).sum()),
-                                   "status": "🏭 Disrupted" if n in set(active_outages["supplier"]) else "✅ Supplying"}
+                                   "status": "Disrupted" if n in set(active_outages["supplier"]) else "Supplying"}
                                   for n, v in pu.VENDORS.items()])
         st.dataframe(directory, hide_index=True, width="stretch", column_config={
             "min order": st.column_config.NumberColumn(format="$%,.0f"),
@@ -885,13 +955,13 @@ with tab_buy:
                                                               "lower it). Only POs made in this version.")})
 
 
-with tab_move:
+if PAGE == "Stock movements":
     st.header("Stock movements")
-    action = st.radio("What happened?", ["📤 Issue to ward", "📥 Receive delivery", "🗑️ Write-off", "🔢 Cycle count"],
+    action = st.radio("What happened?", [":material/output: Issue to ward", ":material/input: Receive delivery", ":material/delete: Write-off", ":material/fact_check: Cycle count"],
                       horizontal=True)
-    st.caption("To order stock, go to 🛒 Purchasing.")
+    st.caption("To order stock, go to Purchasing.")
 
-    if action == "📤 Issue to ward":
+    if action == ":material/output: Issue to ward":
         st.caption("Stock leaves the storeroom, picked **FEFO** (first expired, first out). Expired lots are "
                    "never issued. This usage also feeds the demand estimate (d̄, σd). Anything requested but not "
                    "available is logged as a stockout and still counts as demand; the success message below shows "
@@ -920,7 +990,7 @@ with tab_move:
                     warn = " ⚠️ Now at or below the reorder point!" if left + r["on_order"] <= r["rop"] else ""
                     done(f"All {qty} × {r['name']} issued to {ward}. Take from shelf: {pick_text}.{warn}")
 
-    elif action == "📥 Receive delivery":
+    elif action == ":material/input: Receive delivery":
         st.caption("Goods arrived at the dock. Check the boxes against the vendor's ship notice (ASN): quantity, "
                    "lot number and expiry date are pre-filled from it; change them if the boxes say otherwise. "
                    "The real lead time is saved, so the σL estimate keeps getting better.")
@@ -928,9 +998,9 @@ with tab_move:
         if at_dock.empty:
             coming = open_pos["arrive_date"].dropna()
             st.info("Nothing is waiting at the receiving dock." + (
-                f" {n(open_pos['order_no'].nunique(), 'order')} on the way. Check 🛒 Purchasing or press "
-                "🚚 Next in the sidebar to jump to the next delivery." if len(open_pos) else
-                " Order stock in 🛒 Purchasing."))
+                f" {n(open_pos['order_no'].nunique(), 'order')} on the way. Check Purchasing or press "
+                "Next in the sidebar to jump to the next delivery." if len(open_pos) else
+                " Order stock in Purchasing."))
         else:
             labels = {p.po_id: f"{p.order_no or p.po_id}"
                                f"{f' line {p.line_no:.0f}' if pd.notna(p.line_no) else ''} · {item_labels[p.item_id]} · "
@@ -939,28 +1009,38 @@ with tab_move:
             po_id = st.selectbox("Delivery line", list(labels), format_func=labels.get)
             po = at_dock[at_dock["po_id"] == po_id].iloc[0]
             r = item_row(po["item_id"])
-            has_asn = pd.notna(po["asn_lot_no"])
             outstanding = int(po["qty"])
-            c1, c2, c3, c4 = st.columns(4)
-            qty = c1.number_input("Quantity received", min_value=1, step=1, max_value=outstanding,
-                                  value=outstanding, key=f"recv_qty_{po_id}",
-                                  help="Enter less than expected for a short delivery")
-            when = c2.date_input("Date received", value=TODAY, max_value=TODAY,
+            asn = db.asn_lots(conn, po_id)
+            if sum(q for _, _, q in asn) != outstanding:      # partial receipt so far: one row for the rest
+                asn = asn[:1]
+                asn = [(asn[0][0], asn[0][1], outstanding)] if asn else []
+            if not asn:
+                asn = [("", (TODAY + pd.Timedelta(days=int(r["shelf_life_days"]))).date(), outstanding)]
+            when = st.date_input("Date received", value=TODAY, max_value=TODAY,
                                  min_value=po["order_date"].date(), key=f"recv_date_{po_id}")
-            lot_no = c3.text_input("Lot number", value=po["asn_lot_no"] if has_asn else "", key=f"recv_lot_{po_id}",
-                                   placeholder="printed on the box")
-            expiry = c4.date_input("Expiry date", key=f"recv_exp_{po_id}",
-                                   value=date.fromisoformat(po["asn_expiry"]) if has_asn
-                                   else TODAY + pd.Timedelta(days=int(r["shelf_life_days"])))
-            if has_asn:
-                st.caption(f"Pre-filled from the vendor's ship notice for {po['order_no']}.")
+            st.markdown("**Lots in this delivery.** One row per lot number on the boxes. Add a row if the vendor "
+                        "sent more lots than the ship notice says; enter less than expected for a short delivery.")
+            lot_table = st.data_editor(
+                pd.DataFrame(asn, columns=["lot_no", "expiry_date", "qty"]), num_rows="dynamic",
+                key=f"recv_lots_{po_id}", hide_index=True, width="stretch", column_config={
+                    "lot_no": st.column_config.TextColumn("Lot number", required=True),
+                    "expiry_date": st.column_config.DateColumn("Expiry date", required=True, format="YYYY-MM-DD"),
+                    "qty": st.column_config.NumberColumn("Quantity", min_value=1, step=1, required=True)})
+            lot_table = lot_table.dropna(how="all")
+            entered = [(str(x.lot_no or ""), pd.Timestamp(x.expiry_date).date(), int(x.qty))
+                       for x in lot_table.itertuples() if pd.notna(x.qty) and pd.notna(x.expiry_date)]
+            qty = sum(q for _, _, q in entered)
+            expiry = min((e for _, e, _ in entered), default=TODAY)
+            st.caption(f"Receiving **{qty:,}** of {outstanding:,} outstanding in {n(len(entered), 'lot')}."
+                       + (f" Pre-filled from the vendor's ship notice for {po['order_no']}." if pd.notna(po["asn_lot_no"])
+                          else ""))
             if outstanding < int(po["ordered_qty"]):
-                st.caption(f"⚠️ This line is a **partial receipt**: {outstanding:,} of {int(po['ordered_qty']):,} "
+                st.caption(f"This line is a **partial receipt**: {outstanding:,} of {int(po['ordered_qty']):,} "
                            f"ordered units are still outstanding (vendor backorder or earlier short delivery). "
                            "What you enter now is added to what was already received.")
             no_conf = po["expected_date"] < pd.Timestamp(TODAY)
             if no_conf:
-                st.warning("⚠️ This delivery is overdue. If it is really at the dock, receive it now; "
+                st.warning("This delivery is overdue. If it is really at the dock, receive it now; "
                            "otherwise chase the vendor (its ETA is no longer reliable).")
             # Smart check: can we use this lot before it expires, at today's usage rate?
             if r["d"] > 0 and expiry > TODAY:
@@ -968,22 +1048,22 @@ with tab_move:
                 days_left = (expiry - TODAY).days
                 if days_to_use > days_left:
                     waste = (r["usable"] + qty) - r["d"] * days_left
-                    st.warning(f"⚠️ At {r['d']:.1f} {r['unit']}/day it takes about {days_to_use:.0f} days to use "
+                    st.warning(f"At {r['d']:.1f} {r['unit']}/day it takes about {days_to_use:.0f} days to use "
                                f"this delivery plus current stock, but this lot expires in {days_left} days. "
                                f"About {min(waste, qty):,.0f} units may expire unused. Consider refusing it "
                                f"or asking the vendor for a longer-dated lot.")
             note = st.text_input("Note (optional)", key="recv_note", placeholder="e.g. packing slip no.")
             b1, b2 = st.columns([1, 4])
             if b1.button("Receive", type="primary"):
-                lt, err = run(db.receive, po_id, qty, lot_no, expiry, when, note)
+                lt, err = run(db.receive_lots, po_id, entered, when, note)
                 if not err:
-                    done(f"Received {qty} × {r['name']}. Actual lead time: {lt} days.")
+                    done(f"Received {qty} × {r['name']} in {n(len(entered), 'lot')}. Actual lead time: {lt} days.")
             if b2.button("Refuse / cancel this line"):
                 _, err = run(db.cancel_po, po_id, "Refused at the dock")
                 if not err:
                     done(f"Line refused; {r['name']} is no longer on order.")
 
-    elif action == "🗑️ Write-off":
+    elif action == ":material/delete: Write-off":
         st.caption("Stock that can no longer be used. This is NOT demand, so it does not change the forecast.")
         iid = pick_item("wo_item")
         r = item_row(iid)
@@ -1049,12 +1129,12 @@ with tab_move:
                          "order_date": st.column_config.DateColumn("Sent"),
                          "expected_date": st.column_config.DateColumn("Promised"),
                          "overdue": st.column_config.CheckboxColumn("Late?")})
-        st.caption("Details, vendor messages and tracking: 🛒 Purchasing.")
+        st.caption("Details, vendor messages and tracking: Purchasing.")
 
 # ---------------------------------------------------------------------------
-# Forecast tab: what will demand be, and how good is each method?
+# Forecast page: what will demand be, and how good is each method?
 # ---------------------------------------------------------------------------
-with tab_fc:
+if PAGE == "Forecast":
     st.header("Demand forecast")
     if fc_method == SIMPLE:
         st.warning("Reorder points currently use a simple average (sidebar). The forecasts below are shown for "
@@ -1142,7 +1222,7 @@ forecast **cannot** predict. Predictable swings like flu season are handled by t
 """)
 
 # ---------------------------------------------------------------------------
-# Expiry tab: what is expiring, and what will we fail to use in time?
+# Expiry page: what is expiring, and what will we fail to use in time?
 # ---------------------------------------------------------------------------
 LOT_COLUMNS = {
     "lot_no": "Lot", "expiry_date": st.column_config.DateColumn("Expires"),
@@ -1153,7 +1233,7 @@ LOT_COLUMNS = {
     "waste_value": st.column_config.NumberColumn("Waste $", format="$%,.2f"),
 }
 
-with tab_exp:
+if PAGE == "Expiry":
     st.header("Expiry management")
     st.markdown("""
 Each lot is projected forward with **FEFO**: lots are used in expiry order at the item's average daily usage d̄.
@@ -1171,13 +1251,14 @@ newsvendor trade-off (Co, slides 221-224): too much stock of a short-dated item 
 
     st.subheader("1. Expired: remove from the shelf now")
     if expired.empty:
-        st.success("No expired stock. 👍")
+        st.success("No expired stock.")
     else:
         st.error("Expired stock must never reach a patient. MedStock already refuses to issue it, "
                  "but it should be physically removed and written off.")
         st.dataframe(expired[["name", "lot_no", "expiry_date", "days_left", "qty", "value"]],
                      hide_index=True, width="stretch", column_config=LOT_COLUMNS)
-        if st.button(f"🗑️ Write off all {len(expired)} expired lots (${expired['value'].sum():,.2f})", type="primary"):
+        if st.button(f"Write off all {len(expired)} expired lots (${expired['value'].sum():,.2f})",
+                     icon=":material/delete:", type="primary"):
             n, value = db.write_off_all_expired(conn, TODAY)
             done(f"Wrote off {n} expired lots worth ${value:,.2f}.")
 
@@ -1205,9 +1286,9 @@ newsvendor trade-off (Co, slides 221-224): too much stock of a short-dated item 
                  hide_index=True, width="stretch", column_config=LOT_COLUMNS)
 
 # ---------------------------------------------------------------------------
-# History tab: the ledger explains every change in stock
+# History page: the ledger explains every change in stock
 # ---------------------------------------------------------------------------
-with tab_hist:
+if PAGE == "History":
     st.header("Transaction history")
     log = db.ledger(conn)
     acc, n_counts = db.record_accuracy(conn)
@@ -1217,7 +1298,7 @@ with tab_hist:
     c3.metric("Record accuracy", "n/a" if acc is None else f"{acc:.0%}",
               help="Share of counts where the system matched the shelf. Good practice: 97% or more.")
     if log.empty:
-        st.info("No movements yet. Record one in 📦 Stock movements.")
+        st.info("No movements yet. Record one in Stock movements.")
     else:
         f1, f2 = st.columns(2)
         types = f1.multiselect("Type", sorted(log["type"].unique()))
@@ -1229,9 +1310,10 @@ with tab_hist:
             view = view[view["item_id"].isin(chosen)]
         st.dataframe(view, hide_index=True, width="stretch", column_config={
             "txn_id": "#", "created_at": "Recorded at", "qty": "Qty change", "balance_after": "Balance"})
-        st.download_button("⬇️ Download as CSV", view.to_csv(index=False), "medstock_transactions.csv", "text/csv")
+        st.download_button("Download as CSV", view.to_csv(index=False), "medstock_transactions.csv", "text/csv",
+                           icon=":material/download:")
 
-    st.subheader("🔍 Lot trace (for recalls)")
+    section("Lot trace", "Where did every unit of one lot go? Used for recalls.", "search", "blue")
     st.caption("A manufacturer recalls a lot: find out where every unit of it went.")
     lot_no = st.text_input("Lot number", placeholder="e.g. L81739", key="trace_lot").strip()
     if lot_no:
@@ -1246,9 +1328,9 @@ with tab_hist:
                 st.write("Issued to: " + ", ".join(f"**{w}** ({q})" for w, q in by_ward.items()))
 
 # ---------------------------------------------------------------------------
-# Item detail tab: the math for one item, step by step
+# Item detail page: the math for one item, step by step
 # ---------------------------------------------------------------------------
-with tab_item:
+if PAGE == "Item detail":
     labels = plan["item_id"] + " · " + plan["name"]
     choice = st.selectbox("Choose an item", labels)
     r = plan[labels == choice].iloc[0]
@@ -1267,14 +1349,14 @@ with tab_item:
     c5.metric("Predicted fill rate", f"{r['fill_rate']:.2%}",
               help="THEORETICAL: what the service level promises, from the lead-time-demand formula "
                    "(slides 205-207). For the fill rate actually achieved, see 'Measured fill rate from "
-                   "logged requests' on the 📋 Dashboard.")
+                   "logged requests' on the Dashboard.")
 
-    with st.expander("📐 Show the calculation (lecture formulas)", expanded=True):
+    with st.expander(":material/functions: Show the calculation (lecture formulas)", expanded=True):
         st.markdown(f"""
 **Step 1: Forecast demand and measure lead time from history**
 - Demand method: **{r['method']}**
 - {"Forecast daily demand during the next " + f"{math.ceil(r['L'])}" + " days (the lead time)" if fc_method != SIMPLE else "Average daily usage"} d̄ = **{r['d']:.2f}** units/day
-- σd = **{r['sd']:.2f}** {"(from forecast errors: 1.25 × MAD × √30.4, see 📈 Forecast)" if fc_method != SIMPLE else f"(std. dev. of daily usage, last {lookback} days)"}
+- σd = **{r['sd']:.2f}** {"(from forecast errors: 1.25 × MAD × √30.4, see Forecast)" if fc_method != SIMPLE else f"(std. dev. of daily usage, last {lookback} days)"}
 - Average lead time L̄ = **{r['L']:.1f}** days, σL = **{r['sL']:.1f}** days (from {r['n_orders']:.0f} past orders)
 - Annual demand D = {"sum of the next 365 days of forecast" if fc_method != SIMPLE else "d̄ × 365"} = **{r['D']:,.0f}**
 
@@ -1291,7 +1373,7 @@ with tab_item:
 - ROP = DDLT + SS = **{r['rop']:.1f}**
 
 **Step 4: Predicted fill rate** (slides 205-207): 1 − σ_DDLT·L(z)/Q = **{r['fill_rate']:.3%}**
-(measured from logged requests: 📋 Dashboard)
+(measured from logged requests: Dashboard)
 """)
 
     if r["availability_risk"] != "🟢 OK" or r["unknown_eta"]:
@@ -1355,9 +1437,9 @@ with tab_item:
                      hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------------------
-# ABC-VED tab: where should management attention go?
+# ABC-VED page: where should management attention go?
 # ---------------------------------------------------------------------------
-with tab_abc:
+if PAGE == "ABC-VED analysis":
     st.header("ABC-VED analysis")
     st.markdown("""
 **ABC** (slides 213-215) ranks items by annual dollar value: where the **money** is.
@@ -1397,9 +1479,9 @@ Hospitals combine both. A cheap item like epinephrine is class **C** but **Vital
         "share": st.column_config.NumberColumn("Share", format="percent")})
 
 # ---------------------------------------------------------------------------
-# Calculators tab: free-form what-if tools (defaults are the slide examples)
+# Calculators page: free-form what-if tools (defaults are the slide examples)
 # ---------------------------------------------------------------------------
-with tab_calc:
+if PAGE == "Calculators":
     st.header("Calculators")
     which = st.radio("Model", ["EOQ", "Reorder point (uncertain demand & lead time)",
                                "Newsvendor (single period)"], horizontal=True)
@@ -1454,3 +1536,6 @@ with tab_calc:
                      f"expected leftover **{nv['expected_excess']:.2f}**")
         else:
             st.warning("Needs price > cost > salvage value.")
+
+# icon tiles for every KPI card drawn on this page
+st.html("<style>" + ui.kpi_css(KPI_TILES) + "</style>")

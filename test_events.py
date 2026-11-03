@@ -111,3 +111,20 @@ def test_kpis_add_up(conn):
     assert k["inventory_series"].iloc[-1] == pytest.approx(shelf)
     assert k["turns"] > 0 and k["days_on_hand"] > 0
     assert not kpis.weekly(conn, start, end).empty
+
+
+def test_recall_of_one_lot_in_a_split_delivery_refuses_only_that_lot(conn, monkeypatch):
+    monkeypatch.setattr(pu, "SPLIT_LOT_CHANCE", 1.0)
+    order_no = pu.create_order(conn, "Overseas Medical Imports", [("CON004", 80)])
+    pu.send_order(conn, order_no)
+    line = pu.order_lines(conn, order_no).iloc[0]
+    asn = db.asn_lots(conn, line["po_id"])
+    bad, good = asn[-1], asn[:-1]
+    events.recall_lot(conn, bad[0], "II", "test")                    # found although it is not the first lot
+    db.set_today(conn, pu._d(pu.order_header(conn, order_no)["arrive_date"]))
+    got = pu.receive_order(conn, order_no)
+    assert sorted(g[2] for g in got) == sorted(l for l, _, _ in good)
+    assert conn.execute("SELECT COUNT(*) FROM lots WHERE lot_no = ?", (bad[0],)).fetchone()[0] == 0
+    row = conn.execute("SELECT status, received_qty FROM purchase_orders WHERE po_id = ?", (line["po_id"],)).fetchone()
+    assert row["status"] == "RECEIVED" and row["received_qty"] == sum(q for _, _, q in good)   # closed short
+    assert pu.order_header(conn, order_no)["status"] == "RECEIVED"

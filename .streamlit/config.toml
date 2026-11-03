@@ -1,0 +1,24 @@
+# MedStock look: light lavender background, white cards and sidebar, violet accent (matches assets/logo.svg).
+[theme]
+base = "light"
+primaryColor = "#6D4AFF"
+backgroundColor = "#F7F6FD"
+secondaryBackgroundColor = "#EFECFB"
+textColor = "#1B1F3B"
+linkColor = "#5B3DF5"
+borderColor = "#E4E0F5"
+dataframeHeaderBackgroundColor = "#F3F1FC"
+font = "sans-serif"
+headingFontWeights = [700, 650, 600]
+baseRadius = "0.75rem"
+buttonRadius = "0.6rem"
+showSidebarBorder = true
+chartCategoricalColors = ["#6D4AFF", "#F2706B", "#22B3A6", "#F5B544", "#4C8DF6", "#B07CF2"]
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F1FC"
+
+[server]
+# Serves files in static/ at app/static/ (homepage photos).
+enableStaticServing = true

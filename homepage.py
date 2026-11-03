@@ -1,68 +1,79 @@
+"""
+homepage.py: the public portfolio page (no database access).
+
+Layout follows the approved design mockup: top strip, navigation, hero with photo, feature row,
+"What it does" photo cards, stats band, how a day works, course vs. my work, scope, roadmap,
+call to action and footer. Photos live in static/home/ and are served by Streamlit's static file
+serving (see .streamlit/config.toml). Icons are small inline SVGs (Lucide style) turned into
+data URIs, because st.html strips raw <svg> tags.
+"""
+
 import html
+from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
+
+import ui
+
+GITHUB = "https://github.com/Wendylj-Bai/medstock"
+IMG = "app/static/home/"
+DEMO_LINK = "?open=demo"          # app.py turns this into "show the sign-in / demo"
 
 
 def _esc(s):
     return html.escape(str(s), quote=True)
 
 
-CSS = """
-.medi-root{box-sizing:border-box;max-width:1160px;margin:0 auto;background:#f6f5f0;color:#16222f;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  line-height:1.6;padding:3.2rem 5%;border-radius:20px;border:1px solid #e4e1d6;}
-.medi-root *{box-sizing:border-box;}
-.medi-root h1{color:#0b2a4a;font-size:clamp(2rem,4.5vw,3.1rem);line-height:1.15;letter-spacing:-.02em;margin:.6rem 0 1rem;font-weight:700;}
-.medi-root h2{color:#0b2a4a;font-size:clamp(1.4rem,2.6vw,1.9rem);margin:0 0 .4rem;letter-spacing:-.01em;font-weight:700;}
-.medi-root h3{color:#0b2a4a;font-size:1.05rem;margin:0 0 .4rem;font-weight:650;}
-.medi-root p{color:#32445a;}
-.medi-eyebrow{color:#b57b1e;font-size:.78rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin:0;}
-.medi-lede{max-width:72ch;font-size:1.08rem;margin:0 0 1.6rem;}
-.medi-section{margin:3.4rem 0 0;}
-.medi-section>p{max-width:72ch;}
-.medi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem;margin-top:1.1rem;}
-.medi-card{background:#ffffff;border:1px solid #e4e1d6;border-radius:14px;padding:1.1rem 1.2rem;}
-.medi-card>p{font-size:.95rem;margin:0;}
-.medi-workflow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.9rem;margin:1.4rem 0 .6rem;}
-.medi-wcard{background:#ffffff;border:1px solid #e4e1d6;border-top:3px solid #0e7c7b;border-radius:12px;padding:.9rem 1rem;}
-.medi-wcard p{font-size:.92rem;margin:0;}
-.medi-illustrative{color:#8a6d2f;font-size:.8rem;font-weight:600;margin:.4rem 0 1.4rem;}
-.medi-caption{color:#5b6b7d;font-size:.9rem;margin:1.2rem 0 0;}
-.medi-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:1rem;margin-top:1.1rem;counter-reset:step;}
-.medi-step{background:#ffffff;border:1px solid #e4e1d6;border-radius:14px;padding:1.1rem 1.2rem;position:relative;}
-.medi-step::before{counter-increment:step;content:counter(step) ".";position:absolute;top:.8rem;right:1rem;color:#0e7c7b;font-weight:700;font-size:1.3rem;}
-.medi-step>p{font-size:.93rem;margin:0;}
-.medi-chips{display:flex;flex-wrap:wrap;gap:.55rem;margin-top:1rem;}
-.medi-chip{background:#dbeceb;color:#0b5c5b;border-radius:999px;padding:.35rem .9rem;font-size:.88rem;font-weight:600;}
-.medi-scope{list-style:none;padding:0;margin:1.1rem 0 0;}
-.medi-scope li{padding:.55rem 0 .55rem 1.4rem;position:relative;max-width:76ch;}
-.medi-scope li::before{content:"";position:absolute;left:0;top:1.05rem;width:.55rem;height:.55rem;border-radius:50%;background:#b57b1e;}
-.medi-note{background:#ffffff;border:1px solid #e4e1d6;border-left:4px solid #0e7c7b;border-radius:10px;padding:.9rem 1.1rem;margin:1.2rem 0 0;max-width:80ch;}
-.medi-subhead{font-size:1.05rem;margin:1.6rem 0 .6rem;color:#0e7c7b;}
-.medi-footer{margin:3.6rem 0 0;padding-top:1.2rem;border-top:1px solid #e4e1d6;color:#5b6b7d;font-size:.9rem;}
-.st-key-open_demo{display:flex;justify-content:center;}
-.st-key-open_demo button{border-radius:999px;padding:.65rem 2rem;font-weight:600;font-size:1.02rem;
-  background:#0e7c7b;color:#ffffff;border:none;box-shadow:0 8px 18px rgba(14,124,123,.28);}
-.st-key-open_demo button:hover{background:#0b6463;}
-@media (max-width:720px){.medi-root{padding:2.2rem 6%;}
-  .medi-grid,.medi-workflow,.medi-steps{grid-template-columns:1fr;}}
-"""
+_data_uri = ui.data_uri
+
+
+LOGO = _data_uri((Path(__file__).parent / "assets" / "logo.svg").read_text(encoding="utf-8"))
+
+def icon(name, color="#6D4AFF", size=22, cls="ms-ico"):
+    return ui.img(name, color, size, cls)
+
+
+# ---------------------------------------------------------------------------
+# Content (plain, first person, no dashes; see AGENTS.md writing rules)
+# ---------------------------------------------------------------------------
+
+_HIGHLIGHTS = [
+    ("cart", "#6D4AFF", "#EEEAFF", "Reorder planning", "When to order each item and how much."),
+    ("trend", "#16A394", "#E3F6F3", "Forecasting", "Four methods tested, the most accurate one used per item."),
+    ("alert", "#E5534B", "#FDECEB", "Recalls and outages", "Pull recalled lots and switch to backup vendors."),
+    ("pie", "#E59A1A", "#FDF3E1", "KPIs", "Fill rate, turns, waste and on-time delivery."),
+]
+
+_TOOLS = [
+    ("clipboard", "Dashboard", "What to order today, what is running low and what needs a look."),
+    ("truck", "Purchasing", "One order per vendor. Simulated vendors confirm, ship, run late or come up short."),
+    ("bottle", "Expiry", "Earliest-expiring stock goes out first, with a warning before lots expire."),
+    ("heart", "ABC-VED priorities", "Ranks items by spending and by clinical importance, so Vital items get the most protection."),
+    ("calculator", "Calculators", "EOQ, safety stock and the newsvendor model, with the math shown."),
+]
+
+def _test_count():
+    """Counted from the test files, so the homepage number never goes stale."""
+    files = Path(__file__).parent.glob("test_*.py")
+    return sum(f.read_text(encoding="utf-8").count("\ndef test_") for f in files)
+
+
+def _item_count():
+    """Counted from the sample catalog, so the homepage never goes stale (no database access here)."""
+    f = Path(__file__).parent / "data" / "items.csv"
+    return max(sum(1 for _ in f.open(encoding="utf-8")) - 1, 0) if f.exists() else 150
+
+
+ITEM_COUNT = _item_count()
+
+_STATS = [("box", str(ITEM_COUNT), "Medical supplies"), ("users", "4", "Fictional vendors"),
+          ("wrench", str(len(ui.PAGES)), "Planning tools"), ("file", str(_test_count()), "Automated tests")]
 
 _PROBLEMS = [
     ("Running out", "Critical items like IV fluids and insulin can't wait for a late delivery."),
     ("Expiring stock", "Items with a short shelf life get thrown away when they're ordered in bulk."),
     ("Scattered information", "Usage, deliveries, lot numbers and stock counts often live in separate places."),
-]
-
-_FEATURES = [
-    ("Reorder planning", "Calculates a reorder point and order quantity for every item and flags what to order now or soon."),
-    ("Demand forecasting", "Tests four forecasting methods on past usage and uses the most accurate one for each item."),
-    ("Lot and expiry tracking", "Issues the earliest-expiring stock first and warns before lots expire."),
-    ("Purchasing", "Groups suggested orders into one purchase order per vendor. Simulated vendors confirm, ship, run late or come up short."),
-    ("Recalls and vendor outages", "Pull a recalled lot off the shelf, or take a vendor offline and watch orders move to a backup supplier."),
-    ("KPIs", "Fill rate, stockouts, inventory turns, days on hand, waste and on-time delivery, week by week."),
-    ("ABC-VED priorities", "Ranks items by spending (ABC) and by clinical importance (VED) to decide where attention goes."),
-    ("Full history", "Every issue, receipt, write-off and stock count is logged and can be exported."),
 ]
 
 _STEPS = [
@@ -71,6 +82,11 @@ _STEPS = [
     ("Orders go out", "Items at or below their reorder point are drafted into purchase orders for approval."),
     ("Deliveries arrive", "Received lots, counts and write-offs feed into the next day's plan."),
 ]
+
+_COURSE_SHORT = [("cap", "EOQ, safety stock and reorder points from the course"),
+                 ("trend", "Forecasting methods and error measures from the course"),
+                 ("flask", "Lots, recalls and vendors from my own research"),
+                 ("clock", "The simulation clock is my own design")]
 
 _COURSE = [
     ("EOQ and total cost", "Economic order quantity, ordering vs. holding cost, sensitivity."),
@@ -83,7 +99,7 @@ _COURSE = [
 
 _EXTENSIONS = [
     ("Healthcare setting", "VED criticality, service levels set by criticality, and order sizes limited by shelf life."),
-    ("Lots and expiry", "First-expired-first-out picking, expiry waste projection, 90-day shortage risk and lot tracing."),
+    ("Lots and expiry", "First-expired-first-out picking, expiry waste projection, 90-day shortage risk, lot tracing, and deliveries that arrive as several lots."),
     ("Purchasing workflow", "Draft, approval, vendor confirmation, ship notice and receiving, modeled on the EDI 850, 855 and 856 messages hospitals use."),
     ("Simulation clock", "Generates daily demand and vendor behavior, so a reorder policy can be tested over weeks in a few seconds."),
     ("Supply risk", "Lot recalls, vendor outages and switching to a backup vendor."),
@@ -92,119 +108,352 @@ _EXTENSIONS = [
 
 _STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly"]
 
-_SCOPE = [
-    ("Synthetic data", "The hospital, its usage history and all four vendors are made up."),
-    ("A learning project", "It isn't clinical software and hasn't been used in a real hospital."),
-]
-
 _NEXT = [
-    ("Multi-lot receiving", "Receiving one delivery that arrives as several lots."),
     ("Policy comparison", "Running two inventory policies over the same simulated period and comparing the results."),
     ("Ward supply rooms", "Par levels and transfers between the central storeroom and the wards."),
     ("AI assistance", "Suggestions that explain themselves with the app's own numbers. Planned as the last phase."),
 ]
 
-HERO = """<div class="medi-root">
-  <p class="medi-eyebrow">Supply chain portfolio project</p>
-  <h1>MedStock</h1>
-  <p class="medi-lede">A hospital supply room inventory planner I built to put my supply chain coursework into practice.</p>
-  <p>It tracks 30 medical supplies from four fictional vendors, tells you what to order and how much,
-     and lets you fast-forward time to see whether those decisions hold up.</p>
+# ---------------------------------------------------------------------------
+# Styles
+# ---------------------------------------------------------------------------
+
+CSS = """
+:root{--ms-violet:#6D4AFF;--ms-violet-2:#5B3DF5;--ms-navy:#1B1F3B;--ms-text:#4A4F6A;--ms-muted:#7A7F99;
+  --ms-line:#E7E4F5;--ms-lav:#F7F6FD;--ms-lav-2:#EEEAFF;}
+.block-container{padding-top:3.6rem !important;max-width:1240px !important;}
+.ms{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;color:var(--ms-navy);line-height:1.6;}
+.ms *{box-sizing:border-box;}
+.ms a{text-decoration:none;}
+/* in-page links: the page scrolls inside stMain, under Streamlit's 60px top bar */
+[data-testid="stMain"]{scroll-behavior:smooth;}
+.ms-sec,#top{scroll-margin-top:156px;}
+/* the navigation stays pinned under Streamlit's top bar while the page scrolls */
+[data-testid="stElementContainer"]:has(.ms-nav){position:sticky;top:3.75rem;z-index:999;}
+.ms-nav{box-shadow:0 10px 26px rgba(43,32,120,.10) !important;}
+.ms h1,.ms h2,.ms h3{color:var(--ms-navy);letter-spacing:-.02em;margin:0;padding:0;}
+.ms p{color:var(--ms-text);margin:0;}
+.ms-ico{display:block;}
+
+/* top strip and navigation */
+.ms-strip{background:var(--ms-navy);color:#fff;border-radius:14px 14px 0 0;padding:.45rem 1.4rem;display:flex;
+  justify-content:space-between;font-size:.8rem;}
+.ms-strip span{color:#D9DBF0;}
+.ms-nav{background:#fff;border:1px solid var(--ms-line);border-radius:16px;box-shadow:0 6px 18px rgba(43,32,120,.05);
+  padding:.85rem 1.4rem;display:flex;align-items:center;gap:1.6rem;}
+.ms-brand{display:flex !important;align-items:center;gap:.6rem;font-weight:800;font-size:1.35rem;color:var(--ms-navy) !important;}
+.ms-brand img{width:38px;height:38px;}
+.ms-links{display:flex;gap:1.5rem;margin-left:auto;}
+.ms-links a{color:var(--ms-text) !important;font-size:.92rem;font-weight:500;padding:.3rem 0;}
+.ms-links a.on{color:var(--ms-violet) !important;border-bottom:2px solid var(--ms-violet);}
+.ms-links a:hover{color:var(--ms-violet) !important;}
+.ms-btn-out{display:inline-flex;align-items:center;gap:.45rem;border:1.5px solid var(--ms-violet);color:var(--ms-violet) !important;
+  border-radius:10px;padding:.5rem 1rem;font-weight:600;font-size:.92rem;background:#fff;white-space:nowrap;}
+.ms-btn-out:hover{background:var(--ms-lav-2);}
+
+/* hero */
+.ms-hero-text{padding:3.2rem 0 0 .4rem;}
+.ms-hero-text h1{font-size:clamp(2.2rem,4.4vw,3.3rem);line-height:1.08;font-weight:800;}
+.ms-hero-text h1 em{font-style:normal;color:var(--ms-violet);}
+.ms-hero-text .lede{font-size:1.12rem;margin:1.2rem 0 1.6rem;max-width:34rem;}
+.ms-hero-note strong{color:var(--ms-navy);font-weight:600;}
+.ms-hero-note img{margin-top:.15rem;flex:none;}
+.ms-hero-note{display:flex;align-items:flex-start;gap:.55rem;color:var(--ms-muted);font-size:.9rem;margin:1.4rem 0 0 .4rem;}
+.ms-hero-pic{position:relative;margin-top:1.2rem;}
+.ms-hero-pic img.photo{width:100%;height:440px;object-fit:cover;border-radius:22px;display:block;}
+.ms-float{position:absolute;left:-28px;bottom:34px;background:#fff;border-radius:16px;padding:.9rem 1.1rem;
+  box-shadow:0 18px 40px rgba(43,32,120,.16);min-width:220px;}
+.ms-float small{color:var(--ms-muted);font-size:.78rem;display:block;}
+.ms-float b{font-size:1.7rem;color:var(--ms-navy);}
+.ms-float .tag{font-size:.72rem;color:var(--ms-violet);font-weight:600;}
+.st-key-hero_buttons{gap:.8rem;padding-left:.4rem;}
+.st-key-open_demo button{background:linear-gradient(135deg,#7C5CFF,#5B3DF5) !important;color:#fff !important;border:none !important;
+  border-radius:10px !important;padding:.62rem 1.3rem !important;font-weight:600 !important;box-shadow:0 10px 22px rgba(91,61,245,.28);}
+.st-key-open_demo button:hover{filter:brightness(1.07);}
+.st-key-open_demo button p{color:#fff !important;font-size:.98rem !important;}
+
+/* sections */
+.ms-sec{margin:4.2rem 0 0;}
+.ms-eyebrow{color:var(--ms-violet);font-size:.78rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin:0 0 .4rem;}
+.ms-sec h2{font-size:clamp(1.55rem,2.6vw,2.05rem);font-weight:750;}
+.ms-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:1.4rem;}
+.ms-link{color:var(--ms-violet) !important;font-weight:600;font-size:.92rem;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;}
+.ms-intro{max-width:70ch;margin:.6rem 0 0;}
+
+/* highlight row */
+.ms-high{background:#fff;border:1px solid var(--ms-line);border-radius:20px;box-shadow:0 14px 34px rgba(43,32,120,.07);
+  display:grid;grid-template-columns:repeat(4,1fr);margin-top:2.4rem;}
+.ms-high>div{padding:1.5rem 1.4rem;border-left:1px solid var(--ms-line);}
+.ms-high>div:first-child{border-left:none;}
+.ms-high h3{font-size:1.06rem;margin:.9rem 0 .25rem;}
+.ms-high p{font-size:.9rem;}
+.ms-dot{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(140deg,#8B6CFF,#5B3DF5);box-shadow:0 8px 18px rgba(91,61,245,.25);}
+
+/* tool cards */
+.ms-tools{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;}
+.ms-tool{background:#fff;border:1px solid var(--ms-line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;}
+.ms-tool-art{height:150px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(140deg,#8B6CFF 0%,#5B3DF5 100%);}
+.ms-tool-art::before,.ms-tool-art::after{content:"";position:absolute;border-radius:50%;background:#fff;opacity:.10;}
+.ms-tool-art::before{width:150px;height:150px;right:-55px;top:-65px;}
+.ms-tool-art::after{width:90px;height:90px;left:-30px;bottom:-45px;}
+.ms-tool-art img{position:relative;z-index:1;filter:drop-shadow(0 10px 18px rgba(30,10,120,.28));transition:transform .2s ease;}
+.ms-tool:hover .ms-tool-art img{transform:translateY(-3px) scale(1.03);}
+.ms-tool-body{padding:1rem 1.05rem 1.1rem;}
+.ms-tool h3{font-size:1.02rem;margin-bottom:.3rem;}
+.ms-tool p{font-size:.86rem;}
+.ms-more{margin:1.4rem 0 0;color:var(--ms-muted);font-size:.9rem;}
+
+/* stats band */
+.ms-stats{background:linear-gradient(120deg,#7C5CFF,#5B3DF5);border-radius:20px;display:grid;grid-template-columns:repeat(4,1fr);
+  padding:1.6rem 1rem;margin-top:4rem;}
+.ms-stats>div{display:flex;align-items:center;gap:1rem;justify-content:center;border-left:1px solid rgba(255,255,255,.22);}
+.ms-stats>div:first-child{border-left:none;}
+.ms-stats b{color:#fff;font-size:2rem;line-height:1;display:block;}
+.ms-stats span{color:#E4DEFF;font-size:.9rem;}
+
+/* problems and steps */
+.ms-two{display:grid;grid-template-columns:1fr 1fr;gap:2.4rem;align-items:start;}
+.ms-list{list-style:none;padding:0;margin:1.2rem 0 0;}
+.ms-list li{display:flex;gap:.75rem;padding:.55rem 0;color:var(--ms-text);}
+.ms-list li img{margin-top:.2rem;flex:none;}
+.ms-list strong{color:var(--ms-navy);}
+.ms-steps{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;counter-reset:s;}
+.ms-step{background:#fff;border:1px solid var(--ms-line);border-radius:16px;padding:1.1rem 1.2rem;position:relative;}
+.ms-step::before{counter-increment:s;content:counter(s);position:absolute;top:1rem;right:1.1rem;width:28px;height:28px;border-radius:50%;
+  background:var(--ms-lav-2);color:var(--ms-violet);font-weight:700;font-size:.85rem;display:flex;align-items:center;justify-content:center;}
+.ms-step h3{font-size:1rem;margin-bottom:.3rem;padding-right:2rem;}
+.ms-step p{font-size:.88rem;}
+
+/* workflow diagram frame */
+.st-key-flow_frame iframe{border:1px solid var(--ms-line);border-radius:20px;background:#fff;box-shadow:0 14px 34px rgba(43,32,120,.07);}
+
+/* course and my work */
+.ms-course{display:grid;grid-template-columns:.95fr 1.05fr;background:var(--ms-lav-2);border-radius:22px;overflow:hidden;}
+.ms-course img.photo{width:100%;height:100%;min-height:380px;object-fit:cover;display:block;}
+.ms-course>div{padding:2.4rem 2.4rem;}
+.ms-btn{display:inline-flex;align-items:center;gap:.45rem;background:linear-gradient(135deg,#7C5CFF,#5B3DF5);color:#fff !important;
+  border-radius:10px;padding:.6rem 1.15rem;font-weight:600;font-size:.92rem;margin:1.2rem 0 .6rem;}
+.ms-cols{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;margin-top:1.6rem;}
+.ms-cols h3{font-size:1.02rem;margin-bottom:.7rem;display:flex;align-items:center;gap:.5rem;}
+.ms-mini{background:#fff;border:1px solid var(--ms-line);border-radius:14px;padding:.85rem 1rem;margin-bottom:.6rem;}
+.ms-mini b{color:var(--ms-navy);font-size:.94rem;}
+.ms-mini p{font-size:.86rem;}
+
+/* stack, scope, next */
+.ms-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem;}
+.ms-chip{background:#fff;border:1px solid var(--ms-line);color:var(--ms-navy);border-radius:999px;padding:.35rem .95rem;font-size:.86rem;font-weight:600;}
+.ms-next{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-top:1.2rem;}
+.ms-next>div{background:#fff;border:1px solid var(--ms-line);border-radius:16px;padding:1.1rem 1.15rem;}
+.ms-next h3{font-size:.98rem;margin-bottom:.3rem;}
+.ms-next p{font-size:.86rem;}
+
+/* call to action and footer */
+.ms-cta{background:linear-gradient(120deg,#7C5CFF,#5B3DF5);border-radius:20px;padding:1.6rem 2rem;display:flex;align-items:center;gap:1.6rem;margin-top:4.2rem;}
+.ms-cta .circle{width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex:none;}
+.ms-cta h2{color:#fff;font-size:1.5rem;}
+.ms-cta p{color:#E4DEFF;font-size:.92rem;}
+.ms-cta a{margin-left:auto;border:1.5px solid #fff;color:#fff !important;border-radius:10px;padding:.6rem 1.2rem;font-weight:600;
+  display:inline-flex;align-items:center;gap:.45rem;white-space:nowrap;}
+.ms-cta a:hover{background:rgba(255,255,255,.12);}
+.ms-foot{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:1.6rem;margin-top:3rem;padding:0 .4rem;}
+.ms-foot h4{font-size:.92rem;color:var(--ms-navy);margin:0 0 .6rem;}
+.ms-foot a,.ms-foot span{display:block;color:var(--ms-text) !important;font-size:.88rem;padding:.15rem 0;}
+.ms-foot a:hover{color:var(--ms-violet) !important;}
+.ms-foot p{font-size:.88rem;margin-top:.7rem;max-width:30ch;}
+.ms-bottom{display:flex;justify-content:space-between;border-top:1px solid var(--ms-line);margin:2rem 0 1rem;padding:1rem .4rem 0;
+  color:var(--ms-muted);font-size:.82rem;}
+
+@media (max-width:900px){
+  .ms-links{display:none;} .ms-nav .ms-btn-out{margin-left:auto;}
+  .ms-high,.ms-stats{grid-template-columns:1fr 1fr;} .ms-stats>div{border-left:none;padding:.6rem 0;}
+  .ms-high>div:nth-child(3){border-left:none;} .ms-high>div{border-top:1px solid var(--ms-line);}
+  .ms-tools{grid-template-columns:1fr 1fr;} .ms-next{grid-template-columns:1fr 1fr;}
+  .ms-two,.ms-course,.ms-cols{grid-template-columns:1fr;} .ms-foot{grid-template-columns:1fr 1fr;}
+  .ms-float{left:12px;bottom:12px;} .ms-hero-pic img.photo{height:300px;} .ms-hero-text{padding-top:1.6rem;}
+  .ms-cta{flex-wrap:wrap;} .ms-cta a{margin-left:0;}
+}
+@media (max-width:560px){
+  .ms-high,.ms-stats,.ms-tools,.ms-next,.ms-steps,.ms-foot{grid-template-columns:1fr;}
+  .ms-high>div{border-left:none;} .ms-strip span:last-child{display:none;}
+}
+"""
+
+# ---------------------------------------------------------------------------
+# HTML pieces
+# ---------------------------------------------------------------------------
+
+def _top():
+    return f"""<div class="ms">
+  <nav class="ms-nav" id="top">
+    <a class="ms-brand" href="#top"><img src="{LOGO}" alt="">MedStock</a>
+    <div class="ms-links">
+      <a class="on" href="#top">Home</a><a href="#what">What it does</a><a href="#how">How it works</a>
+      <a href="#course">Course and my work</a><a href="#next">Roadmap</a>
+    </div>
+    <a class="ms-btn-out" href="{DEMO_LINK}" target="_self">Open the demo {icon('arrow', size=16)}</a>
+  </nav>
 </div>"""
 
 
-def _cards(items):
-    return "\n".join(f'<div class="medi-card"><h3>{_esc(t)}</h3><p>{_esc(d)}</p></div>'
-                     for t, d in items)
+HERO_TEXT = """<div class="ms ms-hero-text">
+  <h1>Hospital supply planning,<br><em>tested day by day.</em></h1>
+  <p class="lede">A hospital supply room inventory planner I built to put my supply chain coursework into
+     practice. It tracks """ + str(ITEM_COUNT) + """ medical supplies, tells you what to order and how much, and lets you
+     fast-forward time to see whether those decisions hold up.</p>
+</div>"""
 
 
-def _list_items(items):
-    return "\n".join(f"<li><strong>{_esc(t)}.</strong> {_esc(d)}</li>" for t, d in items)
+def _hero_pic():
+    return f"""<div class="ms ms-hero-pic">
+  <img class="photo" src="{IMG}hero.jpg" alt="A tidy hospital supply room">
+  <div class="ms-float"><small>Fill rate</small><b>98.7%</b>
+    <img src="{_spark()}" width="190" height="34" alt="" style="display:block;margin:.2rem 0">
+    <span class="tag">Example from a simulated month</span></div>
+</div>"""
 
 
-def _steps(items):
-    return "\n".join(f'<div class="medi-step"><h3>{_esc(t)}</h3><p>{_esc(d)}</p></div>'
-                     for t, d in items)
+def _spark():
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190 34">'
+           '<defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6D4AFF" stop-opacity=".25"/>'
+           '<stop offset="1" stop-color="#6D4AFF" stop-opacity="0"/></linearGradient></defs>'
+           '<path d="M2 26 L22 22 L40 25 L60 17 L80 20 L100 13 L120 16 L140 9 L160 12 L188 4 L188 34 L2 34 Z" fill="url(#f)"/>'
+           '<path d="M2 26 L22 22 L40 25 L60 17 L80 20 L100 13 L120 16 L140 9 L160 12 L188 4" fill="none" stroke="#6D4AFF" '
+           'stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></svg>')
+    return _data_uri(svg)
 
 
-def _chips(items):
-    return "\n".join(f'<span class="medi-chip">{_esc(x)}</span>' for x in items)
+def _hero_note():
+    return (f'<div class="ms ms-hero-note">{icon("cap", "#7A7F99", 20)}<span><strong>Supply chain portfolio '
+            f'project by Wendyl Jaca.</strong> Built for my Supply Chain Management course at the University of '
+            f'Portland. All data is fictional, and the demo is invite-only.</span></div>')
 
 
 def _body():
-    return f"""<div class="medi-root">
-  <section class="medi-section">
-    <h2>Why hospital inventory is hard</h2>
-    <p>A supply room has to avoid two opposite mistakes. Run short on IV fluids or insulin and patient
-       care suffers. Overstock slow-moving items and they expire on the shelf. On top of that, lead
-       times vary by vendor and demand changes with the season.</p>
-    <ul class="medi-scope">
-{_list_items(_PROBLEMS)}
-    </ul>
+    highlights = "".join(
+        f'<div><div class="ms-dot">{icon(ic, "#FFFFFF")}</div><h3>{_esc(t)}</h3><p>{_esc(d)}</p></div>'
+        for ic, col, bg, t, d in _HIGHLIGHTS)
+    tools = "".join(
+        f'<div class="ms-tool"><div class="ms-tool-art"><img src="{ui.solid_uri(ic)}" width="78" height="78" alt=""></div>'
+        f'<div class="ms-tool-body"><h3>{_esc(t)}</h3><p>{_esc(d)}</p></div></div>'
+        for ic, t, d in _TOOLS)
+    stats = "".join(f'<div>{icon(ic, "#FFFFFF", 34)}<div><b>{v}</b><span>{_esc(lbl)}</span></div></div>'
+                    for ic, v, lbl in _STATS)
+    problems = "".join(f'<li>{icon("alert", "#E5534B", 18)}<span><strong>{_esc(t)}.</strong> {_esc(d)}</span></li>'
+                       for t, d in _PROBLEMS)
+    steps = "".join(f'<div class="ms-step"><h3>{_esc(t)}</h3><p>{_esc(d)}</p></div>' for t, d in _STEPS)
+    course_short = "".join(f'<li>{icon(ic, "#6D4AFF", 18)}<span>{_esc(t)}</span></li>' for ic, t in _COURSE_SHORT)
+    course = "".join(f'<div class="ms-mini"><b>{_esc(t)}</b><p>{_esc(d)}</p></div>' for t, d in _COURSE)
+    ext = "".join(f'<div class="ms-mini"><b>{_esc(t)}</b><p>{_esc(d)}</p></div>' for t, d in _EXTENSIONS)
+    chips = "".join(f'<span class="ms-chip">{_esc(x)}</span>' for x in _STACK)
+    nxt = "".join(f'<div><h3>{_esc(t)}</h3><p>{_esc(d)}</p></div>' for t, d in _NEXT)
+    return f"""<div class="ms">
+  <div class="ms-high">{highlights}</div>
+
+  <section class="ms-sec" id="what">
+    <div class="ms-head"><div><p class="ms-eyebrow">What it does</p><h2>One supply room, every decision</h2></div>
+      <a class="ms-link" href="{GITHUB}/blob/main/docs/USER_GUIDE.md" target="_blank">See the user guide {icon('arrow', size=16)}</a></div>
+    <div class="ms-tools">{tools}</div>
+    <p class="ms-more">Also in the app: stock movements, item detail with the calculation behind every number, and a
+       full transaction history you can export.</p>
   </section>
 
-  <section class="medi-section">
-    <h2>What it does</h2>
-    <div class="medi-grid">
-{_cards(_FEATURES)}
+  <div class="ms-stats">{stats}</div>
+
+  <section class="ms-sec" id="how">
+    <div class="ms-two">
+      <div><p class="ms-eyebrow">The problem</p><h2>Why hospital inventory is hard</h2>
+        <p class="ms-intro">A supply room has to avoid two opposite mistakes. Run short on IV fluids or insulin and
+           patient care suffers. Overstock slow-moving items and they expire on the shelf. On top of that, lead
+           times vary by vendor and demand changes with the season.</p>
+        <ul class="ms-list">{problems}</ul></div>
+      <div><p class="ms-eyebrow">How it works</p><h2>A simulated day</h2>
+        <p class="ms-intro" style="margin-bottom:1.2rem">Press a button and the hospital moves forward one day.</p>
+        <div class="ms-steps">{steps}</div></div>
     </div>
   </section>
 
-  <section class="medi-section">
-    <h2>How a simulated day works</h2>
-    <div class="medi-steps">
-{_steps(_STEPS)}
+  <!--DIAGRAM-->
+  <section class="ms-sec" id="course">
+    <div class="ms-course">
+      <img class="photo" src="{IMG}storeroom.jpg" alt="A storeroom staff member scanning a box">
+      <div><p class="ms-eyebrow">Course and my work</p><h2>What came from class and what I added</h2>
+        <p class="ms-intro">The formulas come from the Inventory Management and Forecasting units of my Supply Chain
+           Management course at the University of Portland. The hospital setting and everything built around the
+           formulas is my own research.</p>
+        <a class="ms-btn" href="{GITHUB}/blob/main/docs/BUILD_LOG.md" target="_blank">Read the build log {icon('arrow', '#FFFFFF', 16)}</a>
+        <ul class="ms-list">{course_short}</ul></div>
+    </div>
+    <div class="ms-cols">
+      <div><h3>{icon('cap', size=20)}From the course</h3>{course}</div>
+      <div><h3>{icon('flask', size=20)}My additions</h3>{ext}</div>
     </div>
   </section>
 
-  <section class="medi-section">
-    <h2>What came from class and what I added</h2>
-    <p>The formulas come from the Inventory Management and Forecasting units of my Supply Chain
-       Management course at the University of Portland. The hospital setting and everything built
-       around the formulas is my own research.</p>
-    <h3 class="medi-subhead">From the course</h3>
-    <div class="medi-grid">
-{_cards(_COURSE)}
-    </div>
-    <h3 class="medi-subhead">My additions</h3>
-    <div class="medi-grid">
-{_cards(_EXTENSIONS)}
+  <section class="ms-sec">
+    <div class="ms-two">
+      <div><p class="ms-eyebrow">Built with</p><h2>Open tools, checkable math</h2>
+        <p class="ms-intro">Each screen can show the calculation behind its numbers, so you can check why an item was
+           flagged instead of taking it on faith.</p><div class="ms-chips">{chips}</div></div>
+      <div><p class="ms-eyebrow">Scope and limits</p><h2>What this is and isn't</h2>
+        <ul class="ms-list">
+          <li>{icon('check', size=18)}<span><strong>Synthetic data.</strong> The hospital, its usage history and all four vendors are made up.</span></li>
+          <li>{icon('check', size=18)}<span><strong>A learning project.</strong> It isn't clinical software and hasn't been used in a real hospital.</span></li>
+        </ul></div>
     </div>
   </section>
 
-  <section class="medi-section">
-    <h2>Built with</h2>
-    <p>Each screen can show the calculation behind its numbers, so you can check why an item was
-       flagged instead of taking it on faith.</p>
-    <div class="medi-chips">
-{_chips(_STACK)}
-    </div>
+  <section class="ms-sec" id="next">
+    <p class="ms-eyebrow">Roadmap</p><h2>What's next</h2>
+    <p class="ms-intro">MedStock is a work in progress. These are the next things I plan to build.</p>
+    <div class="ms-next">{nxt}</div>
   </section>
 
-  <section class="medi-section">
-    <h2>Scope and limits</h2>
-    <ul class="medi-scope">
-{_list_items(_SCOPE)}
-    </ul>
-  </section>
+  <div class="ms-cta">
+    <div class="circle"><img src="{LOGO}" width="40" height="40" alt=""></div>
+    <div><h2>See it run on simulated days</h2><p>The demo is invite-only. Ask me for access.</p></div>
+    <a href="{DEMO_LINK}" target="_self">Open the demo {icon('arrow', '#FFFFFF', 16)}</a>
+  </div>
 
-  <section class="medi-section">
-    <h2>What's next</h2>
-    <p>MedStock is a work in progress. These are the next things I plan to build.</p>
-    <ul class="medi-scope">
-{_list_items(_NEXT)}
-    </ul>
-  </section>
-
-  <footer class="medi-footer">MedStock is a supply chain portfolio project built with Python and Streamlit.</footer>
+  <footer class="ms-foot">
+    <div><a class="ms-brand" href="#top"><img src="{LOGO}" alt="">MedStock</a>
+      <p>A hospital supply inventory planner, built as a supply chain portfolio project.</p></div>
+    <div><h4>Explore</h4><a href="#what">What it does</a><a href="#how">How it works</a><a href="#next">Roadmap</a></div>
+    <div><h4>Docs</h4><a href="{GITHUB}/blob/main/docs/USER_GUIDE.md" target="_blank">User guide</a>
+      <a href="{GITHUB}/blob/main/docs/HOW_IT_WORKS.md" target="_blank">How it works</a>
+      <a href="{GITHUB}/blob/main/docs/BUILD_LOG.md" target="_blank">Build log</a></div>
+    <div><h4>Project</h4><a href="{GITHUB}" target="_blank">Source code on GitHub</a><span>Built with Python and Streamlit</span></div>
+  </footer>
+  <div class="ms-bottom"><span>MedStock is a learning project. Not clinical software.</span><span>All data is fictional.</span></div>
 </div>"""
+
+
+def open_demo():
+    st.session_state["view"] = "demo" if st.session_state.get("user") else "login"
 
 
 def render_homepage():
     st.html("<style>" + CSS + "</style>")
-    st.html(HERO)
-    if st.button("Explore the inventory demo", key="open_demo"):
-        st.session_state["view"] = "demo" if st.session_state.get("user") else "login"
-        st.rerun()
-    st.caption("The demo is invite-only and needs a sign-in. All data in it is made up.")
-    st.html(_body())
+    st.html(_top())
+    left, right = st.columns([1.02, 1], gap="large")
+    with left:
+        st.html(HERO_TEXT)
+        with st.container(horizontal=True, key="hero_buttons"):
+            st.button("Explore the inventory demo", key="open_demo", icon=":material/arrow_forward:",
+                      icon_position="right", on_click=open_demo)
+            st.html('<div class="ms"><a class="ms-btn-out" href="#how" style="padding:.62rem 1.2rem">How it works</a></div>')
+        st.html(_hero_note())
+    with right:
+        st.html(_hero_pic())
+    before, after = _body().split("<!--DIAGRAM-->")
+    st.html(before + "</div>")
+    st.html(f"""<div class="ms"><section class="ms-sec" id="flow">
+      <div class="ms-head"><div><p class="ms-eyebrow">Workflow</p><h2>How a day flows through MedStock</h2>
+        <p class="ms-intro">From a ward's request to a delivery at the dock, plus the two things that can
+           go wrong along the way. Zoom, search or click a step to trace it.</p></div>
+        <a class="ms-link" href="{IMG}workflow.html?theme=light" target="_blank">Open full screen {icon('arrow', size=16)}</a></div>
+    </section></div>""")
+    with st.container(key="flow_frame"):
+        components.iframe(IMG + "workflow.html?theme=light&embed=1", height=700)
+    st.html('<div class="ms">' + after)

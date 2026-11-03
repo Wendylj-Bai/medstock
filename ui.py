@@ -1,0 +1,240 @@
+"""
+ui.py: MedStock's visual building blocks, shared by the app and the homepage.
+
+* COLORS: the palette from the approved design mockup.
+* ICONS: line icons in the style of the open-source Lucide set (24x24, stroke only).
+* icon_uri / tile_uri: turn an icon into an SVG data URI. Streamlit strips raw <svg> tags from
+  st.html, and buttons only take emoji or Material icons, so custom icons are drawn through CSS
+  background images or <img> tags instead.
+* nav_css / app_css: the sidebar navigation and the card styling for the demo.
+"""
+
+import base64
+
+COLORS = {
+    "violet": "#6D4AFF", "blue": "#3B7BF6", "green": "#16A394", "red": "#E5534B", "amber": "#E59A1A",
+    "gray": "#7A7F99", "navy": "#1B1F3B",
+}
+TINTS = {
+    "violet": "#EEEAFF", "blue": "#E6EFFE", "green": "#E3F6F3", "red": "#FDECEB", "amber": "#FDF3E1",
+    "gray": "#EFF0F5",
+}
+
+ICONS = {
+    "dashboard": '<rect width="7" height="9" x="3" y="3" rx="1.5"/><rect width="7" height="5" x="14" y="3" rx="1.5"/><rect width="7" height="9" x="14" y="12" rx="1.5"/><rect width="7" height="5" x="3" y="16" rx="1.5"/>',
+    "gauge": '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+    "cart": '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+    "swap": '<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
+    "alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    "trend": '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+    "expiry": '<path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 16.3V14"/><circle cx="16" cy="16" r="6"/>',
+    "box": '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    "history": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+    "grid": '<rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/>',
+    "calculator": '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M8 6h8"/><path d="M16 14v4"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
+    "help": '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    "heart": '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/>',
+    "dollar": '<path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    "clock": '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    "pie": '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
+    "truck": '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+    "users": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    "wrench": '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    "file": '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+    "check": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    "cap": '<path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>',
+    "flask": '<path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/>',
+    "arrow": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+    "home": '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    "repeat": '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+    "calendar": '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+    "trash": '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+    "send": '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    "xcircle": '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+    "edit": '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    "factory": '<path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/>',
+    "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    "logout": '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><path d="M21 12H9"/>',
+}
+
+
+def data_uri(svg):
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+
+
+def icon_uri(name, color=COLORS["violet"], stroke=1.9):
+    """A plain line icon."""
+    return data_uri(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" '
+                    f'stroke-width="{stroke}" stroke-linecap="round" stroke-linejoin="round">{ICONS[name]}</svg>')
+
+
+def tile_uri(name, color="violet", active=False):
+    """The MedStock icon tile: a rounded square in a soft tint with a colored line icon.
+    The active tile is solid violet with a white icon, like the logo."""
+    if active:
+        bg = ('<defs><linearGradient id="t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B6CFF"/>'
+              '<stop offset="1" stop-color="#5B3DF5"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#t)"/>')
+        stroke = "#FFFFFF"
+    else:
+        bg = f'<rect width="32" height="32" rx="9" fill="{TINTS[color]}"/>'
+        stroke = COLORS[color]
+    return data_uri(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">{bg}'
+                    f'<g transform="translate(6.5 6.5) scale(0.79)" fill="none" stroke="{stroke}" stroke-width="2.1" '
+                    f'stroke-linecap="round" stroke-linejoin="round">{ICONS[name]}</g></svg>')
+
+
+def img(name, color=COLORS["violet"], size=22, cls="ms-ico"):
+    return f'<img class="{cls}" src="{icon_uri(name, color)}" width="{size}" height="{size}" alt="">'
+
+
+# The demo's pages, in sidebar order: (title, icon, color).
+PAGES = [
+    ("Dashboard", "dashboard", "violet"),
+    ("KPIs", "gauge", "blue"),
+    ("Purchasing", "cart", "green"),
+    ("Stock movements", "swap", "blue"),
+    ("Recalls & disruptions", "alert", "red"),
+    ("Forecast", "trend", "violet"),
+    ("Expiry", "expiry", "amber"),
+    ("Item detail", "box", "blue"),
+    ("History", "history", "green"),
+    ("ABC-VED analysis", "grid", "violet"),
+    ("Calculators", "calculator", "green"),
+    ("Help", "help", "gray"),
+]
+
+
+def nav_key(title):
+    return "nav_" + "".join(ch if ch.isalnum() else "_" for ch in title.lower())
+
+
+def nav_css(active, badges=None):
+    """CSS for the sidebar menu: an icon tile before each button, a highlight on the open page and
+    a red count badge where something needs attention."""
+    rules = []
+    for title, ic, color in PAGES:
+        k = f".st-key-{nav_key(title)} button"
+        rules.append(f'{k}::before{{background-image:url("{tile_uri(ic, color, title == active)}");}}')
+        if title == active:
+            rules.append(f"{k}{{background:{TINTS['violet']} !important;}}"
+                         f"{k} p{{color:{COLORS['violet']} !important;font-weight:650 !important;}}")
+        if badges and badges.get(title):
+            rules.append(f'{k}::after{{content:"{int(badges[title])}";}}')
+    return "\n".join(rules)
+
+
+def kpi_css(cards):
+    """cards: {container_key: (icon, color)}. Draws the colored icon tile on each KPI card."""
+    return "\n".join(
+        f'.st-key-{k} [data-testid="stMetric"]::before{{background-image:url("{tile_uri(ic, color)}");}}'
+        for k, (ic, color) in cards.items())
+
+
+APP_CSS = """
+/* sidebar menu */
+[data-testid="stSidebar"] [class*="st-key-nav_"] button{justify-content:flex-start;background:transparent;border:none;
+  box-shadow:none;padding:.32rem .55rem;min-height:2.6rem;border-radius:12px;gap:0;}
+[data-testid="stSidebar"] [class*="st-key-nav_"] button:hover{background:#F3F1FC;}
+[data-testid="stSidebar"] [class*="st-key-nav_"] button > div{justify-content:flex-start;flex:1;}
+[data-testid="stSidebar"] [class*="st-key-nav_"] button p{font-size:.95rem;color:#2B3050;font-weight:500;text-align:left;}
+[data-testid="stSidebar"] [class*="st-key-nav_"] button::before{content:"";width:32px;height:32px;flex:none;
+  margin-right:.75rem;background-size:contain;background-repeat:no-repeat;}
+[data-testid="stSidebar"] [class*="st-key-nav_"] button::after{margin-left:auto;background:#E5534B;color:#fff;
+  border-radius:999px;font-size:.72rem;font-weight:700;min-width:1.35rem;height:1.35rem;display:flex;
+  align-items:center;justify-content:center;padding:0 .35rem;}
+[data-testid="stSidebar"] [class*="st-key-nav_"]{margin-bottom:-.55rem;}
+.st-key-nav_menu{gap:.15rem;}
+.ms-menu-label{color:#7A7F99;font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin:.2rem 0 .1rem .55rem;}
+
+/* simulation card in the sidebar */
+.st-key-sim_card{background:#F7F6FD;border:1px solid #E7E4F5;border-radius:16px;padding:.9rem .85rem .8rem;}
+.st-key-sim_card h3{font-size:1rem !important;padding:0 !important;}
+
+/* type scale: page title > section title > card label; numbers bold but not shouting */
+.block-container{padding-top:2.2rem;}
+.block-container h2{font-size:1.85rem !important;font-weight:750 !important;letter-spacing:-.02em;color:#1B1F3B;}
+.block-container h3{font-size:1.12rem !important;font-weight:650 !important;color:#1B1F3B;}
+[data-testid="stCaptionContainer"]{color:#6B7090;}
+
+/* section header: icon tile, title, one-line question */
+.ms-sh{display:flex;align-items:center;gap:.8rem;margin:1.6rem 0 .7rem;}
+.ms-sh img{width:38px;height:38px;flex:none;}
+.ms-sh b{display:block;font-size:1.08rem;font-weight:650;color:#1B1F3B;line-height:1.25;}
+.ms-sh span{display:block;font-size:.88rem;color:#6B7090;}
+.st-key-sim_card .ms-sh{margin:0 0 .3rem;}
+.st-key-sim_card .ms-sh b{font-size:.98rem;}
+.st-key-sim_card .ms-sh span{font-size:.84rem;color:#4A4F6A;}
+
+/* metric cards */
+[data-testid="stMetric"]{background:#FFFFFF;border:1px solid #E7E4F5;border-radius:16px;padding:.95rem 1.1rem 1rem;
+  box-shadow:0 6px 18px rgba(43,32,120,.05);position:relative;}
+[class*="st-key-kpi_"] [data-testid="stMetric"]{padding-right:3.6rem;}
+[class*="st-key-kpi_"] [data-testid="stMetric"]::before{content:"";position:absolute;top:.85rem;right:.9rem;width:36px;height:36px;
+  background-size:contain;background-repeat:no-repeat;}
+[data-testid="stMetricLabel"] p{font-size:.84rem !important;font-weight:500 !important;color:#6B7090 !important;}
+[data-testid="stMetricValue"]{font-size:1.65rem !important;font-weight:700 !important;color:#1B1F3B;line-height:1.25;}
+[data-testid="stMetricDelta"]{font-size:.8rem;}
+[data-testid="stExpander"] details{background:#FFFFFF;border-radius:14px;}
+[data-testid="stForm"]{background:#FFFFFF;border-radius:16px;}
+
+/* purchase order progress */
+.ms-steps{display:flex;align-items:flex-start;margin:.4rem 0 1.2rem;}
+.ms-step{flex:1;display:flex;flex-direction:column;align-items:center;position:relative;text-align:center;}
+.ms-step::before{content:"";position:absolute;top:13px;left:-50%;width:100%;height:3px;background:#E7E4F5;z-index:0;}
+.ms-step:first-child::before{display:none;}
+.ms-step.done::before,.ms-step.now::before{background:#6D4AFF;}
+.ms-step i{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;
+  font-size:.8rem;font-weight:700;background:#FFFFFF;border:2px solid #D9D5EE;color:#9A9EB8;position:relative;z-index:1;}
+.ms-step.done i{background:#6D4AFF;border-color:#6D4AFF;color:#fff;}
+.ms-step.now i{border-color:#6D4AFF;color:#6D4AFF;box-shadow:0 0 0 5px #EEEAFF;}
+.ms-step span{font-size:.8rem;color:#9A9EB8;margin-top:.45rem;line-height:1.25;}
+.ms-step.done span{color:#4A4F6A;}
+.ms-step.now span{color:#1B1F3B;font-weight:650;}
+.ms-cancel{display:inline-block;background:#FDECEB;color:#C2413A;border-radius:999px;padding:.25rem .8rem;font-weight:600;font-size:.85rem;}
+"""
+
+
+# Solid medical icons for big feature tiles (64x64). White shapes on the violet gradient; {p} is the
+# violet used for details cut into the white (crosses, keys, hands). Drawn for MedStock.
+SOLID = {
+    "clipboard": '<rect x="13" y="12" width="38" height="46" rx="7" fill="#fff"/>'
+                 '<rect x="23" y="6" width="18" height="11" rx="3.5" fill="#fff" opacity=".6"/>'
+                 '<rect x="29" y="20" width="6" height="17" rx="1.6" fill="{p}"/><rect x="23.5" y="25.5" width="17" height="6" rx="1.6" fill="{p}"/>'
+                 '<rect x="21" y="43" width="22" height="3.4" rx="1.7" fill="{p}" opacity=".35"/>'
+                 '<rect x="21" y="49.5" width="14" height="3.4" rx="1.7" fill="{p}" opacity=".35"/>',
+    "truck": '<rect x="4" y="16" width="35" height="27" rx="5" fill="#fff"/>'
+             '<path d="M39 23h10.5a3 3 0 0 1 2.3 1.1l7.2 8.6a3 3 0 0 1 .7 1.9V41a2 2 0 0 1-2 2H39Z" fill="#fff" opacity=".6"/>'
+             '<path d="M43 27h6l5 6H43Z" fill="{p}" opacity=".45"/>'
+             '<rect x="19" y="21.5" width="5.5" height="16" rx="1.5" fill="{p}"/><rect x="13.75" y="26.75" width="16" height="5.5" rx="1.5" fill="{p}"/>'
+             '<circle cx="16" cy="46" r="7" fill="#fff"/><circle cx="16" cy="46" r="2.6" fill="{p}"/>'
+             '<circle cx="49" cy="46" r="7" fill="#fff"/><circle cx="49" cy="46" r="2.6" fill="{p}"/>',
+    "bottle": '<rect x="15" y="6" width="24" height="9" rx="2.5" fill="#fff" opacity=".6"/>'
+              '<rect x="11" y="15" width="32" height="43" rx="7" fill="#fff"/>'
+              '<rect x="24" y="25" width="6" height="18" rx="1.6" fill="{p}"/><rect x="18" y="31" width="18" height="6" rx="1.6" fill="{p}"/>'
+              '<circle cx="46" cy="45" r="15" fill="{p}"/><circle cx="46" cy="45" r="11.5" fill="#fff"/>'
+              '<path d="M46 38.5V45l4.5 3" fill="none" stroke="{p}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>',
+    "beacon": '<rect x="11" y="48" width="42" height="9" rx="3.5" fill="#fff" opacity=".6"/>'
+              '<path d="M17 48V35a15 15 0 0 1 30 0v13Z" fill="#fff"/>'
+              '<rect x="29.25" y="29" width="5.5" height="15" rx="1.5" fill="{p}"/><rect x="24.5" y="33.75" width="15" height="5.5" rx="1.5" fill="{p}"/>'
+              '<g stroke="#fff" stroke-width="3.6" stroke-linecap="round"><path d="M32 5v7"/><path d="M12.5 12.5l5 5"/>'
+              '<path d="M51.5 12.5l-5 5"/><path d="M4 30h7"/><path d="M53 30h7"/></g>',
+    "heart": '<path d="M32 56 9.5 34.2A13.5 13.5 0 0 1 32 15.6a13.5 13.5 0 0 1 22.5 18.6Z" fill="#fff"/>'
+             '<path d="M14 35h9l3.5-6 5 13 4.5-10 2.5 3H50" fill="none" stroke="{p}" stroke-width="3.4" '
+             'stroke-linecap="round" stroke-linejoin="round"/>',
+    "calculator": '<rect x="13" y="5" width="38" height="54" rx="8" fill="#fff"/>'
+                  '<rect x="19" y="11" width="26" height="12" rx="3" fill="{p}" opacity=".35"/>'
+                  '<g fill="{p}" opacity=".6"><rect x="19" y="29" width="7" height="6" rx="2"/><rect x="28.5" y="29" width="7" height="6" rx="2"/>'
+                  '<rect x="19" y="38.5" width="7" height="6" rx="2"/><rect x="28.5" y="38.5" width="7" height="6" rx="2"/>'
+                  '<rect x="19" y="48" width="7" height="6" rx="2"/><rect x="28.5" y="48" width="7" height="6" rx="2"/></g>'
+                  '<rect x="38" y="29" width="7" height="25" rx="2" fill="{p}"/>',
+}
+
+
+def solid_uri(name, accent="#6A4BFA"):
+    return data_uri(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">{SOLID[name].format(p=accent)}</svg>')
+
+
+def section(title, question, icon_name, color):
+    """A section header with an icon tile: title on top, the question it answers below in gray."""
+    return (f'<div class="ms-sh"><img src="{tile_uri(icon_name, color)}" alt=""><div><b>{title}</b>'
+            f'<span>{question}</span></div></div>')

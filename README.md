@@ -5,7 +5,7 @@ the Inventory Management and Forecasting units of my Supply Chain Management cou
 University of Portland into practice, then kept going to learn how real hospital supply systems
 handle purchasing, expiry, recalls and vendor problems.
 
-It tracks 30 medical supplies from four fictional vendors. For each item it works out when to
+It tracks 150 medical supplies in six categories from four fictional vendors. For each item it works out when to
 reorder and how much, and a simulation clock lets you run the hospital forward day by day to see
 whether those decisions hold up. All data is synthetic and all amounts are in USD.
 
@@ -34,23 +34,23 @@ The formulas come from the course. Slide numbers refer to the course deck.
 | EOQ, total cost, sensitivity (slides 183-190) | Item detail: order quantity and cost curve |
 | Uncertain demand and lead time (197-204) | Safety stock and reorder point for every item |
 | Fill rate and loss function (205-211) | Fill rate per item |
-| ABC classification (213-215) | ABC-VED tab |
-| Newsvendor model (217-231) | Calculators tab (platelets, flu vaccine, winter-storm stock-up) |
+| ABC classification (213-215) | ABC-VED page |
+| Newsvendor model (217-231) | Calculators page (platelets, flu vaccine, winter-storm stock-up) |
 | Overage cost (221-224) | Expiry tab: projected waste from short-dated lots |
-| Forecasting methods and error measures (259-306) | Forecast tab |
+| Forecasting methods and error measures (259-306) | Forecast page |
 
 Everything below is my own research and design, beyond the course.
 
 | My additions | Where it shows up |
 |---|---|
-| VED criticality, service level by criticality, ABC-VED control matrix | Sidebar, ABC-VED tab |
+| VED criticality, service level by criticality, ABC-VED control matrix | Sidebar, ABC-VED page |
 | Order quantities capped by shelf life | Reorder plan |
-| Lots, earliest-expiry-first picking, expiry waste projection, 90-day shortage risk | Dashboard, Expiry tab |
-| Forecast backtesting with automatic method choice per item | Forecast tab |
-| Purchase order workflow modeled on EDI 850/855/856, vendor scorecard | Purchasing tab |
+| Lots, earliest-expiry-first picking, multi-lot deliveries, expiry waste projection, 90-day shortage risk | Dashboard, Expiry page |
+| Forecast backtesting with automatic method choice per item | Forecast page |
+| Purchase order workflow modeled on EDI 850/855/856, vendor scorecard | Purchasing page |
 | Simulation clock with random demand, lead times and backorders | Sidebar |
-| Lot recalls, vendor outages, backup vendors | Recalls & disruptions tab |
-| KPI page with weekly trends | KPIs tab |
+| Lot recalls, vendor outages, backup vendors | Recalls & disruptions page |
+| KPI page with weekly trends | KPIs page |
 | Portfolio homepage and sign-in | Homepage |
 
 ## Running it locally
@@ -79,8 +79,9 @@ as expected values, and every test runs on a temporary database.
 
 ## Documentation
 
-- [User Guide](docs/USER_GUIDE.md): how to use the app day to day (also in the app's Help tab)
+- [User Guide](docs/USER_GUIDE.md): how to use the app day to day (also in the app's Help page)
 - [How It Works](docs/HOW_IT_WORKS.md): formulas, data model and design decisions
+- [Build Log](docs/BUILD_LOG.md): how the project was built, what broke and what I changed
 - [AGENTS.md](AGENTS.md): guide for collaborators and AI coding assistants (architecture, rules, roadmap)
 
 ## Files
@@ -109,7 +110,6 @@ isn't clinical software.
 
 MedStock is still growing. Planned next steps:
 
-- Receiving one delivery that arrives as several lots
 - Comparing two inventory policies side by side over the same simulated period
 - Ward supply rooms with par levels, on top of the central storeroom
 - AI assistance that explains its suggestions using the app's own numbers (last phase)

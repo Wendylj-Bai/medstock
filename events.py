@@ -54,8 +54,8 @@ def recall_lot(conn, lot_no, recall_class="II", reason="", on_date=None, origin=
             raise db.StockError(f"Lot {lot_no} is already under recall")
         lots = conn.execute("SELECT l.*, i.unit_cost, i.name FROM lots l JOIN items i USING (item_id) "
                             "WHERE l.lot_no = ?", (lot_no,)).fetchall()
-        incoming = conn.execute("SELECT item_id FROM purchase_orders WHERE asn_lot_no = ? AND status = 'OPEN'",
-                                (lot_no,)).fetchall()
+        incoming = conn.execute("SELECT item_id FROM purchase_orders WHERE status = 'OPEN' AND (asn_lot_no = ? OR "
+                                "po_id IN (SELECT po_id FROM asn_lots WHERE lot_no = ?))", (lot_no, lot_no)).fetchall()
         if not lots and not incoming:
             raise db.StockError(f"Lot {lot_no} is not in stock and not on its way")
         item_id = (lots[0] if lots else incoming[0])["item_id"]

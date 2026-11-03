@@ -73,6 +73,8 @@ def test_expired_second_line_rolls_back_whole_shipment(conn):
     with conn:                                                     # second line arrives already expired
         conn.execute("UPDATE purchase_orders SET asn_expiry = ? WHERE order_no = ? AND line_no = 2",
                      ((arrive - timedelta(days=1)).isoformat(), order_no))
+        conn.execute("UPDATE asn_lots SET expiry_date = ? WHERE po_id IN (SELECT po_id FROM purchase_orders "
+                     "WHERE order_no = ? AND line_no = 2)", ((arrive - timedelta(days=1)).isoformat(), order_no))
     db.set_today(conn, arrive)
     med_before = db.on_hand(conn, "MED005")
     con_before = db.on_hand(conn, "CON006")

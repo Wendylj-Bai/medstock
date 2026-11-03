@@ -76,9 +76,9 @@ BACKUP_PREMIUM = 0.12
 
 STAGES = ["DRAFT", "SENT", "CONFIRMED", "SHIPPED", "ARRIVED", "RECEIVED"]
 STAGE_LABELS = {
-    "DRAFT": "📝 Draft (awaiting approval)", "SENT": "📤 Sent to vendor", "CONFIRMED": "✔️ Confirmed by vendor",
-    "SHIPPED": "🚚 Shipped", "ARRIVED": "📦 Arrived at dock", "RECEIVED": "✅ Received",
-    "CANCELLED": "❌ Cancelled",
+    "DRAFT": "Draft (awaiting approval)", "SENT": "Sent to vendor", "CONFIRMED": "Confirmed by vendor",
+    "SHIPPED": "Shipped", "ARRIVED": "Arrived at dock", "RECEIVED": "Received",
+    "CANCELLED": "Cancelled",
 }
 
 
@@ -90,6 +90,27 @@ def _d(value):
 def _rng(order_no):
     """Each order gets its own fixed random numbers, so its story never changes after a reload."""
     return np.random.default_rng(zlib.crc32(order_no.encode()))
+
+
+SPLIT_LOT_CHANCE = 0.3     # share of shipped lines that arrive as 2-3 lots from different production runs
+
+
+def _split_lots(order_no, line_no, qty, lot_no, expiry, arrive, vendor_code):
+    """How a shipped line is packed: usually one lot, sometimes two or three with different
+    expiry dates. Uses its own random stream, so it never changes the vendor's other choices."""
+    rng = np.random.default_rng(zlib.crc32(f"{order_no}/{line_no}/lots".encode()))
+    if qty < 10 or rng.random() >= SPLIT_LOT_CHANCE:
+        return [(lot_no, expiry, int(qty))]
+    k = 2 if qty < 40 or rng.random() < 0.7 else 3
+    shares = rng.dirichlet(np.ones(k) * 4)
+    parts = np.maximum(1, np.floor(shares * qty)).astype(int)
+    parts[0] += int(qty) - int(parts.sum())                   # make the parts add up exactly
+    lots = [(lot_no, expiry, int(parts[0]))]
+    for q in parts[1:]:
+        older = expiry - timedelta(days=int(rng.integers(20, 120)))  # an older production run
+        lots.append((f"{vendor_code[:2]}{arrive:%y}{rng.integers(10000, 99999)}",
+                     max(older, arrive + timedelta(days=14)), int(q)))
+    return sorted(lots, key=lambda l: l[1])                    # earliest expiry first
 
 
 def _next_order_no(conn, on_date):
@@ -323,10 +344,16 @@ def send_order(conn, order_no, on_date=None):
             share = rng.uniform(0.15, 0.35) if rng.random() < 0.08 else rng.uniform(0.6, 0.95)
             expiry = arrive + timedelta(days=max(14, int(life * share)))
             lot_no = f"{v['code'][:2]}{arrive:%y}{rng.integers(10000, 99999)}"
+            lots = _split_lots(order_no, line.line_no, confirmed, lot_no, expiry, arrive, v["code"]) if confirmed else []
+            if lots:
+                lot_no, expiry = lots[0][0], lots[0][1]             # the single-lot columns hold the first lot
             conn.execute(
                 "UPDATE purchase_orders SET status = 'OPEN', order_date = ?, expected_date = ?, confirmed_qty = ?, "
                 "asn_lot_no = ?, asn_expiry = ? WHERE po_id = ?",
                 (on_date.isoformat(), promised.isoformat(), confirmed, lot_no, expiry.isoformat(), line.po_id))
+            conn.execute("DELETE FROM asn_lots WHERE po_id = ?", (line.po_id,))
+            conn.executemany("INSERT INTO asn_lots (po_id, seq, lot_no, expiry_date, qty) VALUES (?, ?, ?, ?, ?)",
+                             [(line.po_id, i, l, e.isoformat(), q) for i, (l, e, q) in enumerate(lots)])
             db._ledger(conn, on_date, line.item_id, "PO SENT", 0, order_no,
                        f"Line {line.line_no}: {line.qty} ordered from {h['supplier']} via {v['method']}")
     return order_no
@@ -393,15 +420,23 @@ def receive_order(conn, order_no, on_date=None):
                              "WHERE po_id = ?", (on_date.isoformat(), int(expected), line.po_id))
                 db.close_order_if_done(conn, order_no, on_date)
                 continue
-            if db.is_recalled(conn, line.asn_lot_no):      # refuse it at the dock
-                conn.execute("UPDATE purchase_orders SET status = 'CANCELLED' WHERE po_id = ?", (line.po_id,))
-                db._ledger(conn, on_date, line.item_id, "REFUSED", 0, order_no,
-                           f"Lot {line.asn_lot_no} is under recall: {qty} refused at the dock")
+            lots = db.asn_lots(conn, line.po_id)
+            if received or sum(q for _, _, q in lots) != qty:     # topping up a partial receipt: one lot
+                lots = [(lots[0][0], lots[0][1], qty)]
+            good = [l for l in lots if not db.is_recalled(conn, l[0])]
+            for lot_no, _, q in lots:
+                if (lot_no, _, q) not in good:                  # refuse a recalled lot at the dock
+                    db._ledger(conn, on_date, line.item_id, "REFUSED", 0, order_no,
+                               f"Lot {lot_no} is under recall: {q} refused at the dock")
+            if good:
+                lead = db.receive_lots(conn, line.po_id, good, on_date, "Received per ASN")
+                done.extend((line.name, q, lot_no, lead) for lot_no, _, q in good)
+            if len(good) < len(lots):                           # what was refused will not come: close the line
+                got = conn.execute("SELECT received_qty FROM purchase_orders WHERE po_id = ?",
+                                   (line.po_id,)).fetchone()[0] or 0
+                conn.execute("UPDATE purchase_orders SET status = ?, received_date = ? WHERE po_id = ?",
+                             ("RECEIVED" if got else "CANCELLED", on_date.isoformat(), line.po_id))
                 db.close_order_if_done(conn, order_no, on_date)
-                continue
-            lead = db.receive(conn, line.po_id, qty, line.asn_lot_no, date.fromisoformat(line.asn_expiry), on_date,
-                              "Received per ASN")
-            done.append((line.name, qty, line.asn_lot_no, lead))
     return done
 
 
@@ -422,14 +457,14 @@ def vendor_messages(conn, order_no, today):
                                          f"Vendor promise: delivery by {_d(h['promised_date']):%b %d}"))
         lines = order_lines(conn, order_no)
         if _d(h["ack_date"]) <= today and h.get("vendor_note"):
-            msgs.append((_d(h["ack_date"]), "❌ " + h["vendor_note"]))
+            msgs.append((_d(h["ack_date"]), "Rejected: " + h["vendor_note"]))
         elif _d(h["ack_date"]) <= today:
             short = lines[lines["confirmed_qty"] < lines["qty"]]
             text = "Vendor acknowledged the order" + (" (EDI 855)" if v.get("method") == "EDI" else "") + ". "
             if short.empty:
                 text += "All lines confirmed in full."
             else:
-                text += "⚠️ Vendor backorder: " + "; ".join(
+                text += "Vendor backorder: " + "; ".join(
                     f"{r.name}: only {r.confirmed_qty:,} of {r.qty:,}" for r in short.itertuples()) + \
                     ". The rest will not be delivered; reorder it if still needed."
             msgs.append((_d(h["ack_date"]), text))

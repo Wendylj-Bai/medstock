@@ -8,6 +8,7 @@ from datetime import timedelta
 import pytest
 
 import db
+import ui
 import streamlit as st
 from pathlib import Path
 from streamlit.testing.v1 import AppTest
@@ -45,6 +46,13 @@ def app(tmp_path, monkeypatch):
             c.close()
 
 
+def open_page(at, title):
+    """Click a sidebar menu item and return the main area (only the open page is drawn)."""
+    at.button(key=ui.nav_key(title)).click().run()
+    assert at.session_state["page"] == title
+    return at.main
+
+
 def usage_since(conn, days):
     cutoff = (db.today(conn) - timedelta(days=days)).isoformat()
     with conn:
@@ -69,7 +77,7 @@ def test_app_sample_data_shows_risk_and_requests(app):
     reports = " | ".join(m.value for m in at.metric if m.label == "Overall measured fill rate") == ""
     assert reports
     # the dashboard reorder table carries the availability column
-    dash_df = at.tabs[0].dataframe[0].value
+    dash_df = at.main.dataframe[0].value
     assert "availability_risk" in dash_df.columns
 
 
@@ -79,7 +87,7 @@ def test_app_with_no_usage_history_still_renders(app):
     at.run()
     assert len(at.exception) == 0
     assert vital_at_risk(at) is not None                        # stock / purchasing still accessible
-    f_infos = " | ".join(i.value for i in at.tabs[5].info)
+    f_infos = " | ".join(i.value for i in open_page(at, "Forecast").info)
     assert "Not enough usage history" in f_infos
 
 
@@ -89,7 +97,8 @@ def test_app_with_short_history_renders_and_falls_back(app):
     at.run()
     assert len(at.exception) == 0
     assert vital_at_risk(at) is not None
-    at.tabs[5]                                                   # forecast tab renders too
+    open_page(at, "Forecast")                                    # forecast page renders too
+    assert len(at.exception) == 0
 
 
 def test_app_with_six_months_history_renders(app):
@@ -141,10 +150,10 @@ def test_app_issue_shortage_writes_once_and_reports_honestly(app):
     T = db.today(conn)
     with conn:
         conn.execute("DELETE FROM lots WHERE item_id = 'MED005'")       # nothing usable -> all short
-    at.tabs[3].selectbox(key="issue_item").select("MED005")
+    open_page(at, "Stock movements").selectbox(key="issue_item").select("MED005")
     at.number_input(key="issue_qty").set_value(99999)
     at.run()
-    next(b for b in at.tabs[3].button if b.label == "Issue stock").click()
+    next(b for b in at.main.button if b.label == "Issue stock").click()
     at.run()
     assert len(at.exception) == 0
     row = conn.execute("SELECT requested, filled, short FROM demand_requests").fetchone()
@@ -162,7 +171,7 @@ def test_app_issue_shortage_writes_once_and_reports_honestly(app):
     assert conn.execute("SELECT COUNT(*) FROM demand_requests").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM stockouts").fetchone()[0] == 1
     # a second submission is a new request with its own id -> a second row
-    next(b for b in at.tabs[3].button if b.label == "Issue stock").click()
+    next(b for b in at.main.button if b.label == "Issue stock").click()
     at.run()
     assert conn.execute("SELECT COUNT(*) FROM demand_requests").fetchone()[0] == 2
     assert conn.execute("SELECT COUNT(*) FROM stockouts").fetchone()[0] == 2
@@ -170,7 +179,7 @@ def test_app_issue_shortage_writes_once_and_reports_honestly(app):
 
 def test_dashboard_filters_and_sort_change_the_table(app):
     at, _ = app
-    table = lambda: at.tabs[0].dataframe[0].value
+    table = lambda: at.main.dataframe[0].value
     total = len(table())
     at.multiselect(key="dash_ved").set_value(["V"]).run()
     assert len(table()) < total and set(table()["ved"]) == {"V"}
@@ -188,7 +197,7 @@ def test_dashboard_filters_and_sort_change_the_table(app):
 
 def test_dashboard_reorder_status_is_first_column_and_ok_can_go_on_top(app):
     at, _ = app
-    table = lambda: at.tabs[0].dataframe[0].value
+    table = lambda: at.main.dataframe[0].value
     assert list(table().columns[:2]) == ["status", "availability_risk"]
     ranks = table()["status"].map({"🔴 Order now": 0, "🟡 Order soon": 1, "🟢 OK": 2}).tolist()
     assert ranks == sorted(ranks)                                 # default: 🔴 first
@@ -205,7 +214,7 @@ def test_approving_a_draft_moves_on_to_the_next_vendors_draft(app):
     items, usage, deliveries, open_pos, _ = db.load_frames(conn)
     made = pu.draft_suggested_orders(conn, planning.build_plan(items, usage, deliveries, open_pos=open_pos))
     assert len(made) >= 2
-    at.run()
+    open_page(at, "Purchasing")
     first = at.selectbox(key="po_pick").value
     assert first in made                                          # a draft opens first, not an old order
     at.button(key=f"send_{first}").click().run()
@@ -214,3 +223,23 @@ def test_approving_a_draft_moves_on_to_the_next_vendors_draft(app):
     assert second in made and second != first                     # moved on to the next vendor
     assert pu.order_header(conn, first)["status"] == "SENT"
     assert pu.order_header(conn, first)["supplier"] != pu.order_header(conn, second)["supplier"]
+
+
+def test_every_sidebar_page_opens_without_errors(app):
+    """Only the open page is drawn, so a page must not rely on names set up by another page."""
+    at, _ = app
+    for title, _, _ in ui.PAGES:
+        open_page(at, title)
+        assert not at.exception, (title, [e.value for e in at.exception])
+
+
+def test_preparing_drafts_on_the_dashboard_opens_purchasing_on_the_first_draft(app):
+    at, conn = app
+    with conn:                                                   # make sure something needs ordering
+        conn.execute("DELETE FROM lots WHERE item_id = 'MED005'")
+    at.run()
+    at.button(key="prepare_drafts").click().run()
+    assert not at.exception
+    assert at.session_state["page"] == "Purchasing"
+    drafts = [r[0] for r in conn.execute("SELECT order_no FROM po_headers WHERE status = 'DRAFT' ORDER BY order_no")]
+    assert drafts and at.selectbox(key="po_pick").value == drafts[0]

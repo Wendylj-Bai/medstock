@@ -183,3 +183,38 @@ def test_project_expiry_fefo_waste():
     # C: 60 days left, but the first 10 days go to lot B -> 50 days x 5 = 250 >= 100, no waste
     assert out.loc["C", "projected_waste"] == 0
     assert list(out["expiry_band"]) == ["Expired", "≤ 30 days", "31-90 days"]
+
+
+# --- One delivery line, several lots ----------------------------------------
+
+def test_receive_lots_makes_one_shelf_row_per_lot_but_one_delivery(conn):
+    n_deliveries = conn.execute("SELECT COUNT(*) FROM deliveries").fetchone()[0]
+    before = db.on_hand(conn, "MED005")
+    po_id = db.create_po(conn, "MED005", 100, TODAY - timedelta(days=10))
+    lead = db.receive_lots(conn, po_id, [("LOT-A", TODAY + timedelta(days=300), 60),
+                                         ("LOT-B", TODAY + timedelta(days=500), 40)])
+    assert lead == 10
+    assert lot_qty(conn, "LOT-A") == 60 and lot_qty(conn, "LOT-B") == 40
+    assert db.on_hand(conn, "MED005") == before + 100
+    assert conn.execute("SELECT COUNT(*) FROM deliveries").fetchone()[0] == n_deliveries + 1   # one σL sample
+    tx = conn.execute("SELECT txn_id, qty FROM transactions WHERE type = 'RECEIVE' "
+                      "ORDER BY txn_id DESC LIMIT 1").fetchone()
+    assert tx["qty"] == 100
+    assert conn.execute("SELECT COUNT(*) FROM transaction_lots WHERE txn_id = ?",
+                        (tx["txn_id"],)).fetchone()[0] == 2
+    assert conn.execute("SELECT status FROM purchase_orders WHERE po_id = ?", (po_id,)).fetchone()[0] == "RECEIVED"
+
+
+@pytest.mark.parametrize("lots, message", [
+    ([("SAME", TODAY + timedelta(days=300), 10), ("SAME", TODAY + timedelta(days=300), 10)], "twice"),
+    ([("OK", TODAY + timedelta(days=300), 10), ("OLD", TODAY, 10)], "expired"),
+    ([("OK", TODAY + timedelta(days=300), 60), ("MORE", TODAY + timedelta(days=300), 60)], "outstanding"),
+    ([], "at least one lot"),
+])
+def test_receive_lots_checks_every_lot_before_saving_anything(conn, lots, message):
+    before = db.on_hand(conn, "MED005")
+    po_id = db.create_po(conn, "MED005", 100, TODAY - timedelta(days=5))
+    with pytest.raises(db.StockError, match=message):
+        db.receive_lots(conn, po_id, lots)
+    assert db.on_hand(conn, "MED005") == before
+    assert conn.execute("SELECT COUNT(*) FROM lots WHERE po_id = ?", (po_id,)).fetchone()[0] == 0

@@ -87,6 +87,10 @@ CREATE TABLE IF NOT EXISTS vendor_outages (
     outage_id INTEGER PRIMARY KEY AUTOINCREMENT, supplier TEXT, start_date TEXT, end_date TEXT,
     reason TEXT, origin TEXT
 );
+CREATE TABLE IF NOT EXISTS asn_lots (
+    po_id TEXT NOT NULL, seq INTEGER NOT NULL, lot_no TEXT NOT NULL, expiry_date TEXT NOT NULL,
+    qty INTEGER NOT NULL, PRIMARY KEY (po_id, seq)
+);
 CREATE TABLE IF NOT EXISTS demand_requests (
     request_id TEXT PRIMARY KEY, item_id TEXT, date TEXT, ward TEXT,
     requested INTEGER, filled INTEGER, short INTEGER, note TEXT
@@ -415,20 +419,36 @@ def close_order_if_done(conn, order_no, on_date):
 
 
 def receive(conn, po_id, qty, lot_no, expiry_date, on_date=None, note=""):
-    """Goods arrive for an open PO as a new lot.
+    """Goods arrive for an open PO as one lot. See receive_lots for several lots."""
+    return receive_lots(conn, po_id, [(lot_no, expiry_date, qty)], on_date, note)
 
-    Saves the REAL lead time (for σL) and warns-by-error about bad lots:
-    already expired, or a shelf life too short to be used up.
+
+def receive_lots(conn, po_id, lots, on_date=None, note=""):
+    """One delivery line arrives as one or more lots: lots = [(lot_no, expiry_date, qty), ...].
+
+    Each lot becomes its own row on the shelf (so FEFO and recalls work per lot), but the receipt
+    is ONE delivery: one ledger row and one lead-time sample for σL. Every lot is checked before
+    anything is saved: lot number present and not repeated, not expired, not under recall, and the
+    total no more than what is still outstanding.
     """
-    qty = _check_qty(qty)
     on_date = _check_date(conn, on_date or today(conn))
-    lot_no = (lot_no or "").strip()
-    if not lot_no:
-        raise StockError("Lot number is required (it is printed on the box)")
-    if expiry_date <= on_date:
-        raise StockError("This lot is already expired. Do not accept it; return it to the supplier")
-    if is_recalled(conn, lot_no):
-        raise StockError(f"Lot {lot_no} is under recall. Refuse the delivery and ask the vendor for a replacement")
+    if not lots:
+        raise StockError("Enter at least one lot")
+    clean, seen = [], set()
+    for lot_no, expiry_date, qty in lots:
+        qty = _check_qty(qty)
+        lot_no = (lot_no or "").strip()
+        if not lot_no:
+            raise StockError("Lot number is required (it is printed on the box)")
+        if lot_no in seen:
+            raise StockError(f"Lot {lot_no} is listed twice. Add its quantities together")
+        seen.add(lot_no)
+        if expiry_date <= on_date:
+            raise StockError(f"Lot {lot_no} is already expired. Do not accept it; return it to the supplier")
+        if is_recalled(conn, lot_no):
+            raise StockError(f"Lot {lot_no} is under recall. Refuse it and ask the vendor for a replacement")
+        clean.append((lot_no, expiry_date, qty))
+    qty = sum(q for _, _, q in clean)
     with atomic(conn):
         po = conn.execute("SELECT * FROM purchase_orders WHERE po_id = ? AND status = 'OPEN'", (po_id,)).fetchone()
         if po is None:
@@ -440,7 +460,7 @@ def receive(conn, po_id, qty, lot_no, expiry_date, on_date=None, note=""):
             arrive = conn.execute("SELECT arrive_date FROM po_headers WHERE order_no = ?",
                                   (po["order_no"],)).fetchone()[0]
             if arrive and on_date < date.fromisoformat(arrive):
-                raise StockError(f"{po['order_no']} has not arrived yet. Check its status in 🛒 Purchasing")
+                raise StockError(f"{po['order_no']} has not arrived yet. Check its status in Purchasing")
         _check_movement_date(conn, po["item_id"], on_date)
         expected = po["confirmed_qty"] if po["confirmed_qty"] is not None else po["qty"]
         received = po["received_qty"] or 0
@@ -449,9 +469,12 @@ def receive(conn, po_id, qty, lot_no, expiry_date, on_date=None, note=""):
             raise StockError(f"{po_id} only has {remaining} outstanding; "
                              f"cannot receive {qty} (the vendor confirmed {expected})")
         lead_time = (on_date - order_date).days
-        cur = conn.execute(
-            "INSERT INTO lots (item_id, lot_no, expiry_date, qty, received_date, po_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (po["item_id"], lot_no, expiry_date.isoformat(), qty, on_date.isoformat(), po_id))
+        moves = []
+        for lot_no, expiry_date, lot_qty in clean:
+            cur = conn.execute(
+                "INSERT INTO lots (item_id, lot_no, expiry_date, qty, received_date, po_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (po["item_id"], lot_no, expiry_date.isoformat(), lot_qty, on_date.isoformat(), po_id))
+            moves.append((cur.lastrowid, lot_qty))
         new_received = received + qty
         if new_received >= expected:
             conn.execute("UPDATE purchase_orders SET status = 'RECEIVED', received_date = ?, received_qty = ? "
@@ -462,11 +485,27 @@ def receive(conn, po_id, qty, lot_no, expiry_date, on_date=None, note=""):
                      "VALUES (?, ?, ?, ?, ?, ?)",
                      (po_id, po["item_id"], po["supplier"], po["order_date"], on_date.isoformat(), lead_time))
         short = f" Short by {expected - new_received}." if new_received < expected else ""
+        lot_text = (f"Lot {clean[0][0]}, expires {clean[0][1]}." if len(clean) == 1 else
+                    f"{len(clean)} lots: " + "; ".join(f"{l} ({q}, expires {e})" for l, e, q in clean) + ".")
         _ledger(conn, on_date, po["item_id"], "RECEIVE", qty, po["order_no"] or po_id,
-                f"Lot {lot_no}, expires {expiry_date}. Lead time {lead_time} days.{short} {note}".strip(),
-                [(cur.lastrowid, qty)])
+                f"{lot_text} Lead time {lead_time} days.{short} {note}".strip(), moves)
         close_order_if_done(conn, po["order_no"], on_date)
     return lead_time
+
+
+def asn_lots(conn, po_id):
+    """The lots a vendor's ship notice announced for one line: [(lot_no, expiry_date, qty), ...].
+    Older orders have a single lot in purchase_orders.asn_lot_no / asn_expiry."""
+    rows = conn.execute("SELECT lot_no, expiry_date, qty FROM asn_lots WHERE po_id = ? ORDER BY seq",
+                        (po_id,)).fetchall()
+    if rows:
+        return [(r["lot_no"], date.fromisoformat(r["expiry_date"]), int(r["qty"])) for r in rows]
+    po = conn.execute("SELECT asn_lot_no, asn_expiry, confirmed_qty, qty FROM purchase_orders WHERE po_id = ?",
+                      (po_id,)).fetchone()
+    if po is None or not po["asn_lot_no"]:
+        return []
+    qty = po["confirmed_qty"] if po["confirmed_qty"] is not None else po["qty"]
+    return [(po["asn_lot_no"], date.fromisoformat(po["asn_expiry"]), int(qty))]
 
 
 def write_off(conn, lot_id, qty, reason, on_date=None, note=""):

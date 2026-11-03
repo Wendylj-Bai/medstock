@@ -23,6 +23,7 @@ import hmac
 import secrets
 import sys
 import time
+from pathlib import Path
 
 import streamlit as st
 
@@ -76,7 +77,7 @@ def render_login():
     """Sign-in page shown between the homepage and the demo."""
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
-        st.markdown("## 🏥 MedStock")
+        st.image(str(Path(__file__).parent / "assets" / "logo_wordmark.svg"), width=220)
         st.caption("Sign in to open the inventory demo. Access is by invitation.")
         if not configured_users():
             st.warning("Sign-in is not set up on this server yet (no accounts in the app's secrets).")

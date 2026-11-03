@@ -1,0 +1,259 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "A simulated day in MedStock",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": {
+          "label": "Ward"
+        },
+        "backend": {
+          "label": "MedStock step"
+        },
+        "security": {
+          "label": "Approval or risk"
+        },
+        "messagebus": {
+          "label": "Logged event"
+        },
+        "database": {
+          "label": "Stock on the shelf"
+        },
+        "external": {
+          "label": "Vendor"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "wards",
+      "label": "Hospital wards"
+    },
+    {
+      "id": "store",
+      "label": "Supply room"
+    },
+    {
+      "id": "buying",
+      "label": "Purchasing + vendors"
+    },
+    {
+      "id": "risk",
+      "label": "When things go wrong",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "use",
+      "label": "Use stock",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "decide",
+      "label": "Plan + order",
+      "fromCol": 2,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "restock",
+      "label": "Restock",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "request",
+    "issue",
+    "plan",
+    "draft",
+    "approve",
+    "vendor",
+    "receive"
+  ],
+  "nodes": [
+    {
+      "id": "request",
+      "lane": "wards",
+      "col": 0,
+      "type": "frontend",
+      "label": "Ward request",
+      "sublabel": "daily demand",
+      "width": 136
+    },
+    {
+      "id": "issue",
+      "lane": "store",
+      "col": 1,
+      "type": "backend",
+      "label": "Issue stock",
+      "sublabel": "earliest expiry first",
+      "width": 136
+    },
+    {
+      "id": "plan",
+      "lane": "store",
+      "col": 2,
+      "type": "backend",
+      "label": "Reorder plan",
+      "sublabel": "forecast, ROP, safety stock",
+      "tag": "course formulas",
+      "width": 136
+    },
+    {
+      "id": "receive",
+      "lane": "store",
+      "col": 5,
+      "type": "database",
+      "label": "Receive at dock",
+      "sublabel": "lots + expiry dates",
+      "width": 136
+    },
+    {
+      "id": "draft",
+      "lane": "buying",
+      "col": 3,
+      "type": "backend",
+      "label": "Draft orders",
+      "sublabel": "one PO per vendor",
+      "width": 136
+    },
+    {
+      "id": "approve",
+      "lane": "buying",
+      "col": 4,
+      "type": "security",
+      "label": "Buyer approves",
+      "sublabel": "review and send",
+      "width": 136
+    },
+    {
+      "id": "vendor",
+      "lane": "buying",
+      "col": 5,
+      "type": "external",
+      "label": "Vendor",
+      "sublabel": "confirm, ship, notice",
+      "width": 136
+    },
+    {
+      "id": "stockout",
+      "lane": "risk",
+      "col": 1,
+      "type": "messagebus",
+      "label": "Stockout logged",
+      "sublabel": "unmet demand",
+      "width": 136
+    },
+    {
+      "id": "recall",
+      "lane": "risk",
+      "col": 2,
+      "type": "security",
+      "label": "Lot recall",
+      "sublabel": "pulled from shelf",
+      "width": 136
+    },
+    {
+      "id": "outage",
+      "lane": "risk",
+      "col": 4,
+      "type": "security",
+      "label": "Vendor outage",
+      "sublabel": "backup vendor +12%",
+      "width": 136
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-request-issue",
+      "from": "request",
+      "to": "issue",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-issue-plan",
+      "from": "issue",
+      "to": "plan",
+      "label": "usage",
+      "variant": "default"
+    },
+    {
+      "id": "e-plan-draft",
+      "from": "plan",
+      "to": "draft",
+      "label": "below ROP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-draft-approve",
+      "from": "draft",
+      "to": "approve",
+      "variant": "default"
+    },
+    {
+      "id": "e-approve-vendor",
+      "from": "approve",
+      "to": "vendor",
+      "label": "send PO",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e-vendor-receive",
+      "from": "vendor",
+      "to": "receive",
+      "label": "ship",
+      "variant": "default"
+    },
+    {
+      "id": "e-issue-stockout",
+      "from": "issue",
+      "to": "stockout",
+      "label": "short",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e-recall-plan",
+      "from": "recall",
+      "to": "plan",
+      "label": "stock drops",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e-outage-vendor",
+      "from": "outage",
+      "to": "vendor",
+      "label": "reroute",
+      "variant": "dashed",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Every simulated day",
+      "items": [
+        "Wards draw stock; shortages are logged as real demand",
+        "The plan updates and items below their reorder point become draft orders"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Supply risk",
+      "items": [
+        "A recalled lot leaves the shelf and is refused at the dock",
+        "During an outage, orders move to the backup vendor"
+      ]
+    }
+  ]
+}

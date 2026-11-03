@@ -72,19 +72,19 @@ def advance(conn, days, service_levels=None, method="Auto", params=None,
 
         # 0. Vendor news and random events
         for order_no in pu.process_vendor_responses(conn, day):
-            report["events"].append({"date": day, "event": f"❌ {order_no} rejected by "
+            report["events"].append({"date": day, "event": f"{order_no} rejected by "
                                                            f"{pu.order_header(conn, order_no)['supplier']} "
                                                            "(supply disruption)"})
         if random_events:
             if rng.random() < OUTAGE_PER_DAY:
                 o = events.random_outage(conn, rng, day)
                 if o:
-                    report["events"].append({"date": day, "event": f"🏭 {o['supplier']} cannot supply for "
+                    report["events"].append({"date": day, "event": f"{o['supplier']} cannot supply for "
                                                                    f"{o['days']} days"})
             if rng.random() < RECALL_PER_DAY:
                 r = events.random_recall(conn, rng, day)
                 if r:
-                    report["events"].append({"date": day, "event": f"🚨 Recall of lot {r['lot_no']} "
+                    report["events"].append({"date": day, "event": f"Recall of lot {r['lot_no']} "
                                                                    f"({r['item_id']}): {r['removed']} pulled"})
 
         # 1. Morning: receive what is at the dock

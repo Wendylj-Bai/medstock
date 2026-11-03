@@ -155,3 +155,34 @@ def test_automatic_mode_sends_orders_and_drafts_mode_waits(conn):
     assert rep["drafted"] and not rep["sent"]
     _, open_pos = db.load_stock(conn)
     assert open_pos.empty                                           # drafts are not on order
+
+
+def test_a_shipped_line_can_arrive_as_several_lots(conn, monkeypatch):
+    monkeypatch.setattr(pu, "SPLIT_LOT_CHANCE", 1.0)                 # every line splits
+    order_no = pu.create_order(conn, "Overseas Medical Imports", [("CON004", 80)])
+    pu.send_order(conn, order_no)
+    line = pu.order_lines(conn, order_no).iloc[0]
+    asn = db.asn_lots(conn, line["po_id"])
+    assert len(asn) >= 2
+    assert sum(q for _, _, q in asn) == line["confirmed_qty"]         # the lots add up to the confirmed qty
+    assert len({l for l, _, _ in asn}) == len(asn)                   # different lot numbers
+    assert [e for _, e, _ in asn] == sorted(e for _, e, _ in asn)    # earliest expiry first
+    db.set_today(conn, pu._d(pu.order_header(conn, order_no)["arrive_date"]))
+    got = pu.receive_order(conn, order_no)
+    assert len(got) == len(asn)
+    for lot_no, expiry, qty in asn:
+        row = conn.execute("SELECT qty, expiry_date FROM lots WHERE lot_no = ?", (lot_no,)).fetchone()
+        assert row["qty"] == qty and row["expiry_date"] == expiry.isoformat()
+
+
+def test_lot_split_does_not_change_the_vendors_other_choices(conn, monkeypatch):
+    def story(split):
+        c = db.connect(conn.execute("PRAGMA database_list").fetchone()[2].replace("test.db", f"s{split}.db"))
+        monkeypatch.setattr(pu, "SPLIT_LOT_CHANCE", split)
+        o = pu.create_order(c, "Overseas Medical Imports", [("CON004", 80), ("CON006", 30)])
+        pu.send_order(c, o)
+        h = pu.order_header(c, o)
+        out = (h["ack_date"], h["ship_date"], h["arrive_date"], list(pu.order_lines(c, o)["confirmed_qty"]))
+        c.close()
+        return out
+    assert story(0.0) == story(1.0)
