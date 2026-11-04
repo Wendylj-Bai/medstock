@@ -7,6 +7,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 import auth
+import ui
 
 APP = Path(__file__).parent / "app.py"
 
@@ -49,7 +50,7 @@ def home_to_demo(tmp_path, monkeypatch):
 
 
 def nav_count(at):
-    """Number of sidebar menu buttons: 12 inside the demo, 0 on the homepage and sign-in page."""
+    """Number of sidebar menu buttons: one per page inside the demo, 0 on the homepage and sign-in page."""
     return sum(1 for b in at.button if (b.key or "").startswith("nav_"))
 
 
@@ -101,7 +102,7 @@ def test_open_demo_enters_app_with_all_tabs(home_to_demo):
     at = sign_in(home_to_demo)
     assert not at.exception
     assert at.session_state["view"] == "demo"
-    assert nav_count(at) == 12
+    assert nav_count(at) == len(ui.PAGES)
 
 
 def test_back_home_keeps_session_state(home_to_demo):
@@ -117,12 +118,12 @@ def test_back_home_keeps_session_state(home_to_demo):
 
 def test_repeat_navigation_home_demo_home_demo(home_to_demo):
     at = sign_in(home_to_demo)
-    assert nav_count(at) == 12
+    assert nav_count(at) == len(ui.PAGES)
     at.button(key="back_home").click().run()
     assert nav_count(at) == 0
     at.button(key="open_demo").click().run()
     assert not at.exception
-    assert nav_count(at) == 12
+    assert nav_count(at) == len(ui.PAGES)
 
 
 def test_demo_needs_sign_in(home_to_demo):

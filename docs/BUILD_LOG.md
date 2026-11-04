@@ -198,3 +198,20 @@ the same four fictional vendors, three years of daily usage for every item.
 a fixed random seed and draws numbers in list order, so the original 30 items kept exactly the
 same history, row for row, and every existing test stayed valid. I checked that by comparing the
 old and new files. The homepage now counts the items from the catalog instead of saying "30".
+
+## 14. A more visual dashboard
+
+**Date:** November 4, 2026
+
+**Built:** The dashboard now reads at a glance. The KPI cards show fill rate and inventory value
+with a trend line for the last 8 weeks. Below them sit a demand chart (8 weeks of actual demand
+plus a 4-week forecast), a reorder status donut, vendor on-time bars and an ABC-VED grid. The
+alerts that used to stack up as colored message boxes are now one card, each with an Open button
+that jumps to the right page. The Vital items at risk became a sorted table instead of one long
+sentence.
+
+**Problem:** With 150 items, the old Vital items message was a paragraph nobody could scan, and
+trend lines need weeks of simulated history before they mean anything.
+
+**Decision:** Charts only use data the app already records. When there is no history yet, a card
+shows the number without a trend instead of an invented line.

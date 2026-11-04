@@ -5,6 +5,7 @@ Run:   .venv/bin/streamlit run app.py
 Then open the link it prints (usually http://localhost:8501).
 """
 
+import html
 import math
 import re
 import uuid
@@ -293,63 +294,192 @@ if PAGE == "Dashboard":
     at_risk = plan[plan["availability_risk"] != "🟢 OK"]
     vital_at_risk = at_risk[at_risk["ved"] == "V"]
 
+    # --- Weekly history for the KPI trend lines (only real ledger and usage history, never invented)
+    try:
+        wk = kpis.weekly(conn, TODAY - pd.Timedelta(days=56), TODAY).tail(8)
+    except Exception:
+        wk = pd.DataFrame(columns=["week", "demand", "short", "fill_rate", "inventory_value"])
+    last4 = wk.tail(4)
+    fill_4w = (1 - last4["short"].sum() / last4["demand"].sum()) if last4["demand"].sum() > 0 else None
+    fr = wk["fill_rate"].dropna()
+    iv = wk["inventory_value"].dropna() if "inventory_value" in wk else pd.Series(dtype=float)
+
     c1, c2, c3, c4 = st.columns(4)
-    st.html("<style>" + ui.kpi_css({"kpi_now": ("cart", "red"), "kpi_soon": ("clock", "amber"),
-                                    "kpi_vital": ("heart", "violet"), "kpi_value": ("dollar", "blue")}) + "</style>")
-    c1.container(key="kpi_now").metric("Order now", len(red))
-    c2.container(key="kpi_soon").metric("Order soon", len(yellow))
-    c3.container(key="kpi_vital").metric("Vital items at risk", len(vital_at_risk),
+    st.html("<style>" + ui.kpi_css({"kpi_now": ("cart", "red"), "kpi_vital": ("heart", "violet"),
+                                    "kpi_fill": ("gauge", "green"), "kpi_value": ("dollar", "blue")}) + "</style>")
+    c1.container(key="kpi_now").metric("Order now", len(red),
+              help=f"Items at or below their reorder point. Another {len(yellow)} will reach it soon.")
+    c2.container(key="kpi_vital").metric("Vital items at risk", len(vital_at_risk),
               help="Vital (V) items flagged by the availability projection: zero usable stock, or their "
                    "usable stock runs out before the next reliable delivery. This is about what we can "
                    "physically give patients, independent of the reorder point.")
-    c4.container(key="kpi_value").metric("Inventory value on hand", f"${(plan['on_hand'] * plan['unit_cost']).sum():,.0f}")
+    c3.container(key="kpi_fill").metric(
+        "Fill rate (4 weeks)", f"{fill_4w:.1%}" if fill_4w is not None else "n/a",
+        delta=f"{(fr.iloc[-1] - fr.iloc[-2]) * 100:+.1f} pts vs last week" if len(fr) >= 2 else None,
+        chart_data=(fr * 100).round(1).tolist() if len(fr) >= 2 else None, chart_type="area",
+        help="Share of requested units filled from the shelf. The line shows the last 8 weeks.")
+    c4.container(key="kpi_value").metric(
+        "Inventory value on hand", f"${(plan['on_hand'] * plan['unit_cost']).sum():,.0f}",
+        delta=(f"{'+' if iv.iloc[-1] >= iv.iloc[-2] else '-'}${abs(iv.iloc[-1] - iv.iloc[-2]):,.0f} vs last week"
+               if len(iv) >= 2 else None), delta_color="off",
+        chart_data=iv.round(0).tolist() if len(iv) >= 2 else None, chart_type="area",
+        help="Stock on hand at unit cost. The line shows the value at the end of each of the last 8 weeks.")
 
     if len(vital_at_risk):
-        st.error("**Vital items at risk:** " + ", ".join(
-            f"{r.name} ({r.days_of_supply:.0f} days of supply left)" for r in vital_at_risk.itertuples())
-            + ". " + ("Some have no usable stock at all. " if (vital_at_risk["usable"] == 0).any() else "")
-            + "Check the reorder plan and any open purchases below.")
+        empty = int((vital_at_risk["usable"] == 0).sum())
+        st.error(f"**{n(len(vital_at_risk), 'Vital item')} may run short.** "
+                 + (("1 item has" if empty == 1 else f"{empty} items have") + " no usable stock at all. "
+                    if empty else "")
+                 + "The most urgent are at the top. Check the reorder plan and open purchases below.")
+        vt = (vital_at_risk.assign(empty_rank=(vital_at_risk["usable"] > 0).astype(int))
+              .sort_values(["empty_rank", "days_of_supply"]))
+        vt = pd.DataFrame({
+            "Item": vt["name"],
+            "Risk": vt["availability_risk"],
+            "Usable stock": vt["usable"].astype(int).astype(str) + " " + vt["unit"],
+            "Days of supply": vt["days_of_supply"].clip(lower=0).round(0),
+            "Runs out": pd.to_datetime(vt["shortage_date"]),
+            "On order": vt["on_order"].astype(int),
+            "Suggested order": vt["order_qty"].astype(int),
+            "Vendor": vt["order_vendor"],
+        })
+        with st.container(key="vital_table"):
+            st.dataframe(vt, hide_index=True, width="stretch", height=min(38 + 35 * len(vt), 320),
+                         column_config={
+                             "Days of supply": st.column_config.ProgressColumn(
+                                 "Days of supply", format="%d days", min_value=0, max_value=30,
+                                 help="Usable stock divided by expected daily demand. The bar is full at 30 days."),
+                             "Runs out": st.column_config.DateColumn(
+                                 "Runs out", format="MMM D", help="First day usable stock is projected to hit zero"),
+                             "Suggested order": st.column_config.NumberColumn(
+                                 help="Order quantity from the reorder plan (0 = not at the reorder point yet)"),
+                         })
+
+    # --- Row: demand trend and reorder status
+    CHART = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=8, r=8, t=8, b=8),
+                 font=dict(color="#4A4F6A", size=12), hoverlabel=dict(bgcolor="#FFFFFF"))
+    g1, g2 = st.columns([1.9, 1], gap="medium")
+    with g1.container(border=True, key="card_demand"):
+        st.markdown("**Demand: last 8 weeks and the next 4**")
+        hist = usage[usage["date"] > pd.Timestamp(TODAY) - pd.Timedelta(days=56)]
+        actual = hist.set_index("date")["qty_used"].resample("W-SUN", label="left", closed="left").sum()
+        future = np.zeros(28)
+        for v in daily_demand.values():
+            arr = np.asarray(v, dtype=float).ravel()
+            future += np.resize(arr, 28) if arr.size > 1 else np.full(28, float(arr[0]) if arr.size else 0.0)
+        fweeks = pd.date_range(pd.Timestamp(TODAY), periods=4, freq="7D")
+        fvals = future.reshape(4, 7).sum(axis=1)
+        fig = go.Figure()
+        if len(actual):
+            fig.add_scatter(x=actual.index, y=actual.values, name="Actual", mode="lines+markers",
+                            line=dict(color="#F2706B", width=2.5, shape="spline"), marker=dict(size=6),
+                            fill="tozeroy", fillcolor="rgba(242,112,107,.08)")
+            fx, fy = [actual.index[-1], *fweeks], [actual.values[-1], *fvals]
+        else:
+            fx, fy = list(fweeks), list(fvals)
+        fig.add_scatter(x=fx, y=fy, name="Forecast", mode="lines+markers",
+                        line=dict(color="#6D4AFF", width=2.5, dash="dash", shape="spline"), marker=dict(size=6))
+        fig.update_layout(**CHART, height=290, legend=dict(orientation="h", y=1.12, x=1, xanchor="right"),
+                          yaxis=dict(title="Units per week", gridcolor="#EEEAF8", zeroline=False),
+                          xaxis=dict(gridcolor="rgba(0,0,0,0)"), hovermode="x unified")
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_demand")
+    with g2.container(border=True, key="card_status"):
+        st.markdown("**Reorder status**")
+        counts = [len(red), len(yellow), len(plan) - len(red) - len(yellow)]
+        fig = go.Figure(go.Pie(labels=["Order now", "Order soon", "Enough stock"], values=counts, hole=.68,
+                               sort=False, marker=dict(colors=["#F2706B", "#F5B544", "#22B3A6"],
+                                                       line=dict(color="#FFFFFF", width=3)),
+                               textinfo="none", hovertemplate="%{label}: %{value} items<extra></extra>"))
+        fig.update_layout(**CHART, height=290, showlegend=True,
+                          legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center"),
+                          annotations=[dict(text=f"<b style='font-size:26px;color:#1B1F3B'>{len(plan)}</b><br>items",
+                                            showarrow=False, x=0.5, y=0.5)])
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_status")
+
+    # --- Row: supply alerts, vendor reliability, ABC-VED mix
+    alerts = []          # (color, icon, title, detail, page to open)
     for o in active_outages.itertuples():
         n_items = int((plan["supplier"] == o.supplier).sum())
-        st.error(f"**{o.supplier} cannot supply** until {pd.Timestamp(o.end_date):%b %d} ({o.reason}). "
-                 f"New orders for its {n(n_items, 'item')} go to their backup vendor at +{pu.BACKUP_PREMIUM:.0%}. "
-                 "See Recalls & disruptions.")
+        alerts.append(("red", "truck", f"{o.supplier} cannot supply",
+                       f"Until {pd.Timestamp(o.end_date):%b %d} ({o.reason}). Its {n(n_items, 'item')} use the "
+                       f"backup vendor at +{pu.BACKUP_PREMIUM:.0%}.", "Recalls & disruptions"))
     new_recalls = recall_list[pd.to_datetime(recall_list["date"]) > pd.Timestamp(TODAY) - pd.Timedelta(days=14)]
     for r in new_recalls.itertuples():
-        st.error(f"**Recall (Class {r.recall_class})**: lot {r.lot_no} of {r.name}, {r.reason}. "
-                 f"{r.qty_removed:,} pulled from the shelf; wards that received it: {r.wards}.")
-    if len(po_list):
-        at_dock = po_list[po_list["stage"] == "ARRIVED"]
-        late = po_list[po_list["late"]]
-        if len(at_dock):
-            st.warning(f"{len(at_dock)} deliver{'y is' if len(at_dock) == 1 else 'ies are'} waiting at the "
-                       f"receiving dock ({', '.join(at_dock['order_no'])}). Receive them in Purchasing: "
-                       "stock on the dock cannot be issued.")
-            st.button("Receive in Purchasing", icon=":material/arrow_forward:", icon_position="right",
-                      key="dock_receive", on_click=open_purchase_order, args=(at_dock["order_no"].iloc[0],))
-        if len(late):
-            st.warning("Late vendor deliveries: " + ", ".join(
-                f"{r.order_no} from {r.supplier} (promised {pd.Timestamp(r.promised_date):%b %d})"
-                for r in late.itertuples()) + ". This is why safety stock covers lead-time variability (σL).")
+        alerts.append(("red", "alert", f"Class {r.recall_class} recall: lot {r.lot_no}",
+                       f"{r.name}, {r.reason}. {r.qty_removed:,} pulled; wards that received it: {r.wards}.",
+                       "Recalls & disruptions"))
+    at_dock = po_list[po_list["stage"] == "ARRIVED"] if len(po_list) else po_list
+    late = po_list[po_list["late"]] if len(po_list) else po_list
+    if len(at_dock):
+        alerts.append(("amber", "box", f"{n(len(at_dock), 'delivery', 'deliveries')} at the dock",
+                       f"{', '.join(at_dock['order_no'])}. Stock on the dock cannot be issued until received.",
+                       "dock"))
+    if len(late):
+        alerts.append(("amber", "clock", f"{n(len(late), 'late delivery', 'late deliveries')}",
+                       ", ".join(f"{r.order_no} from {r.supplier} (promised {pd.Timestamp(r.promised_date):%b %d})"
+                                 for r in late.itertuples()), "Purchasing"))
     recent_so = stockouts[stockouts["date"] > pd.Timestamp(TODAY) - pd.Timedelta(days=30)]
     if len(recent_so):
-        by_item = recent_so.groupby(["name", "ved"])["qty_short"].sum().reset_index()
-        st.error(f"Stockouts in the last 30 days: {n(len(recent_so), 'event')}. " + ", ".join(
-            f"{r.name} ({r.ved}, {r.qty_short:,} short)" for r in by_item.itertuples()))
+        by_item = recent_so.groupby(["name", "ved"])["qty_short"].sum().sort_values(ascending=False)
+        top = ", ".join(f"{nm} ({ved}, {q:,} short)" for (nm, ved), q in by_item.head(3).items())
+        more = f" and {len(by_item) - 3} more" if len(by_item) > 3 else ""
+        alerts.append(("red", "alert", f"{n(len(recent_so), 'stockout')} in the last 30 days", top + more, "KPIs"))
     expired = lot_risk[lot_risk["days_left"] <= 0]
     soon = lot_risk[(lot_risk["days_left"] > 0) & (lot_risk["days_left"] <= 30)]
-    parts = []
-    if len(expired):
-        parts.append(f"{n(len(expired), 'expired lot')} still on the shelf (${expired['value'].sum():,.0f})")
-    if len(soon):
-        parts.append(f"{n(len(soon), 'lot')} expiring within 30 days")
-    if parts:
-        st.warning("" + " and ".join(parts) + ". See the Expiry page.")
+    if len(expired) or len(soon):
+        parts = []
+        if len(expired):
+            parts.append(f"{n(len(expired), 'expired lot')} still on the shelf (${expired['value'].sum():,.0f})")
+        if len(soon):
+            parts.append(f"{n(len(soon), 'lot')} expiring within 30 days")
+        alerts.append(("amber", "expiry", "Expiring stock", " and ".join(parts) + ".", "Expiry"))
     if len(rising):
-        names = ", ".join(f"{r.name} (+{r.change_90:.0%})" for r in rising.head(5).itertuples())
-        more = f" and {len(rising) - 5} more" if len(rising) > 5 else ""
-        st.info(f"Demand is forecast to rise over the next 90 days for {len(rising)} items: {names}{more}. "
-                "Reorder points already include this rise. See the Forecast page.")
+        names = ", ".join(f"{r.name} (+{r.change_90:.0%})" for r in rising.head(3).itertuples())
+        more = f" and {len(rising) - 3} more" if len(rising) > 3 else ""
+        alerts.append(("violet", "trend", f"Demand rising for {n(len(rising), 'item')}",
+                       f"Next 90 days: {names}{more}. Reorder points already include it.", "Forecast"))
+
+    a1, a2, a3 = st.columns([1.35, 1, 1], gap="medium")
+    with a1.container(border=True, key="card_alerts"):
+        st.markdown("**Supply alerts**")
+        if not alerts:
+            st.caption("Nothing needs attention right now.")
+        for i, (color, ic, title, detail, page) in enumerate(alerts):
+            with st.container(horizontal=True, vertical_alignment="center", key=f"alert_{i}", gap="small"):
+                st.html(f'<div class="ms-alert"><img src="{ui.tile_uri(ic, color)}" width="34" height="34" alt="">'
+                        f'<div><b>{html.escape(title)}</b><span>{html.escape(detail)}</span></div></div>')
+                if page == "dock":
+                    st.button("Receive", key="dock_receive", on_click=open_purchase_order,
+                              args=(at_dock["order_no"].iloc[0],))
+                else:
+                    st.button("Open", key=f"alert_open_{i}", on_click=open_page, args=(page,),
+                              help=f"Open {page}")
+    with a2.container(border=True, key="card_vendors"):
+        st.markdown("**Vendor on-time delivery**")
+        sc = pu.vendor_scorecard(conn).dropna(subset=["on_time"])
+        if sc.empty:
+            st.caption("No deliveries received yet. Run the simulation clock to build a vendor history.")
+        else:
+            sc = sc.sort_values("on_time")
+            fig = go.Figure(go.Bar(x=sc["on_time"] * 100, y=sc["vendor"], orientation="h",
+                                   marker=dict(color="#6D4AFF", cornerradius=6),
+                                   text=[f"{v:.0%}" for v in sc["on_time"]], textposition="outside",
+                                   hovertemplate="%{y}: %{x:.0f}% on time<extra></extra>"))
+            fig.update_layout(**CHART, height=260, xaxis=dict(range=[0, 115], visible=False),
+                              yaxis=dict(automargin=True), bargap=0.45)
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_vendors")
+    with a3.container(border=True, key="card_abcved"):
+        st.markdown("**ABC-VED mix**")
+        mix = pd.crosstab(plan["abc"], plan["ved"]).reindex(index=["A", "B", "C"], columns=["V", "E", "D"],
+                                                              fill_value=0)
+        fig = go.Figure(go.Heatmap(z=mix.values, x=["Vital", "Essential", "Desirable"], y=["A", "B", "C"],
+                                   text=mix.values, texttemplate="%{text}", textfont=dict(size=14),
+                                   colorscale=[[0, "#F3F1FC"], [1, "#6D4AFF"]], showscale=False, xgap=4, ygap=4,
+                                   hovertemplate="%{y}%{x}: %{z} items<extra></extra>"))
+        fig.update_layout(**CHART, height=260, yaxis=dict(autorange="reversed", title="Spend class"),
+                          xaxis=dict(side="top"))
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_abcved")
+        st.caption("A = highest spend. Vital items in class A get the closest control.")
 
     STATUSES = ["🔴 Order now", "🟡 Order soon", "🟢 OK"]
     RISKS = ["🔴 No usable stock", "🔴 Shortage risk", "🟡 Shortage watch", "🟢 Enough stock"]

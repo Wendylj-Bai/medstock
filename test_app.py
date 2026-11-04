@@ -53,6 +53,17 @@ def open_page(at, title):
     return at.main
 
 
+def reorder_table(at):
+    """The dashboard's reorder plan (the vital-items table may sit above it)."""
+    return next(d.value for d in at.main.dataframe if "order_value" in d.value.columns)
+
+
+def vital_table_items(at):
+    """Item names in the dashboard's 'Vital items at risk' table (empty if none are at risk)."""
+    t = next((d.value for d in at.main.dataframe if "Runs out" in d.value.columns), None)
+    return set() if t is None else set(t["Item"])
+
+
 def usage_since(conn, days):
     cutoff = (db.today(conn) - timedelta(days=days)).isoformat()
     with conn:
@@ -77,7 +88,7 @@ def test_app_sample_data_shows_risk_and_requests(app):
     reports = " | ".join(m.value for m in at.metric if m.label == "Overall measured fill rate") == ""
     assert reports
     # the dashboard reorder table carries the availability column
-    dash_df = at.main.dataframe[0].value
+    dash_df = reorder_table(at)
     assert "availability_risk" in dash_df.columns
 
 
@@ -132,13 +143,13 @@ def test_app_future_po_does_not_hide_empty_vital_risk(app):
                      ((T + timedelta(days=10)).isoformat(), po))
     at.run()
     assert len(at.exception) == 0
-    assert "Insulin regular 10mL vial" in " | ".join(e.value for e in at.error)
+    assert "Insulin regular 10mL vial" in vital_table_items(at)
     # receipt planned for TODAY still does not erase the zero-usable risk
     with conn:
         conn.execute("UPDATE purchase_orders SET expected_date = ? WHERE po_id = ?",
                      (T.isoformat(), po))
     at.run()
-    assert "Insulin regular 10mL vial" in " | ".join(e.value for e in at.error)
+    assert "Insulin regular 10mL vial" in vital_table_items(at)
 
 
 def test_app_issue_shortage_writes_once_and_reports_honestly(app):
@@ -179,7 +190,7 @@ def test_app_issue_shortage_writes_once_and_reports_honestly(app):
 
 def test_dashboard_filters_and_sort_change_the_table(app):
     at, _ = app
-    table = lambda: at.main.dataframe[0].value
+    table = lambda: reorder_table(at)
     total = len(table())
     at.multiselect(key="dash_ved").set_value(["V"]).run()
     assert len(table()) < total and set(table()["ved"]) == {"V"}
@@ -197,7 +208,7 @@ def test_dashboard_filters_and_sort_change_the_table(app):
 
 def test_dashboard_reorder_status_is_first_column_and_ok_can_go_on_top(app):
     at, _ = app
-    table = lambda: at.main.dataframe[0].value
+    table = lambda: reorder_table(at)
     assert list(table().columns[:2]) == ["status", "availability_risk"]
     ranks = table()["status"].map({"🔴 Order now": 0, "🟡 Order soon": 1, "🟢 OK": 2}).tolist()
     assert ranks == sorted(ranks)                                 # default: 🔴 first
@@ -243,3 +254,13 @@ def test_preparing_drafts_on_the_dashboard_opens_purchasing_on_the_first_draft(a
     assert at.session_state["page"] == "Purchasing"
     drafts = [r[0] for r in conn.execute("SELECT order_no FROM po_headers WHERE status = 'DRAFT' ORDER BY order_no")]
     assert drafts and at.selectbox(key="po_pick").value == drafts[0]
+
+
+def test_vital_items_at_risk_show_as_a_sorted_table(app):
+    at, _ = app
+    vital = next((d.value for d in at.main.dataframe if "Runs out" in d.value.columns), None)
+    if vital is None:                                            # nothing at risk in this sample
+        return
+    assert list(vital.columns[:3]) == ["Item", "Risk", "Usable stock"]
+    empty = vital["Usable stock"].str.startswith("0 ").tolist()
+    assert empty == sorted(empty, reverse=True)                  # items with no stock come first

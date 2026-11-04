@@ -284,7 +284,7 @@ Fill rate and inventory value usually move in opposite directions: that trade-of
 📜 **History** > filter by type or item if you like > **⬇️ Download as CSV** (opens in Excel).
 
 ### 6.11 See why an item has the reorder point it has
-🔎 **Item detail** > choose the item > open **📐 Show the calculation**. Every number is shown step by step.
+**Item detail** > choose the item > open **Show the calculation**. Every number is shown step by step.
 
 ---
 

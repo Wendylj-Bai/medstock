@@ -54,6 +54,7 @@ ICONS = {
     "edit": '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     "factory": '<path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/>',
     "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    "sparkles": '<path d="M9.94 14.06 7.5 21l-2.44-6.94L-1.88 11.62 5.06 9.18 7.5 2.24l2.44 6.94 6.94 2.44z" transform="translate(4.5 0) scale(.85)"/><path d="M19 3v4"/><path d="M21 5h-4"/><path d="M18 15v3"/><path d="M19.5 16.5h-3"/>',
     "logout": '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><path d="M21 12H9"/>',
 }
 
@@ -145,6 +146,18 @@ APP_CSS = """
 [data-testid="stSidebar"] [class*="st-key-nav_"]{margin-bottom:-.55rem;}
 .st-key-nav_menu{gap:.15rem;}
 .ms-menu-label{color:#7A7F99;font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin:.2rem 0 .1rem .55rem;}
+
+/* dashboard cards and charts */
+[class*="st-key-card_"]{background:#FFFFFF;border-radius:18px !important;border-color:#E7E4F5 !important;
+  box-shadow:0 6px 18px rgba(43,32,120,.05);}
+[class*="st-key-card_"] [data-testid="stMarkdownContainer"] p strong{font-size:1.02rem;color:#1B1F3B;}
+[class*="st-key-alert_"]{border-bottom:1px solid #F0EEF8;padding:.35rem 0;}
+[class*="st-key-alert_"]:last-child{border-bottom:none;}
+.ms-alert{display:flex;gap:.75rem;align-items:flex-start;}
+.ms-alert img{flex:none;}
+.ms-alert b{display:block;color:#1B1F3B;font-size:.92rem;line-height:1.3;}
+.ms-alert span{display:block;color:#6B7090;font-size:.82rem;line-height:1.4;margin-top:.1rem;}
+[class*="st-key-alert_"] button{padding:.2rem .8rem;min-height:2rem;font-size:.85rem;}
 
 /* simulation card in the sidebar */
 .st-key-sim_card{background:#F7F6FD;border:1px solid #E7E4F5;border-radius:16px;padding:.9rem .85rem .8rem;}
