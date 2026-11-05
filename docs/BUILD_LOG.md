@@ -215,3 +215,20 @@ trend lines need weeks of simulated history before they mean anything.
 
 **Decision:** Charts only use data the app already records. When there is no history yet, a card
 shows the number without a trend instead of an invented line.
+
+## 15. A calmer dashboard and a shorter menu
+
+**Date:** November 4, 2026
+
+**Built:** The dashboard became a summary: four equal KPI cards, a table of the 8 most urgent items
+with the draft-order action right under it, three supply-alert cards with a status label and an
+action, and four charts in two even rows. The full 150-item table, its filters and the measured
+fill rate moved to a new Inventory page. The sidebar shows six main pages, puts the rest under
+"More", and folds the simulation clock and policy settings into "Planning settings".
+
+**Problem:** The page had grown long, card heights did not match, and at tablet width the
+four-column rows squeezed labels down to one letter.
+
+**Decision:** Rows of cards wrap (4 across on a desktop, 2 x 2 on a tablet) instead of squeezing.
+Risk is always written out in words, not shown by color alone. The calculations did not change:
+the four KPI values were checked before and after and match.

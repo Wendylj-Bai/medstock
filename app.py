@@ -116,23 +116,30 @@ def open_page(page):
 
 with st.sidebar.container(key="nav_menu"):
     st.html('<p class="ms-menu-label">Menu</p>')
-    for _title in PAGE_TITLES:
+    for _title in ui.MAIN_PAGES:
+        st.button(ui.nav_label(_title), key=ui.nav_key(_title), on_click=open_page, args=(_title,), width="stretch",
+                  help=f"Open {_title}" if ui.nav_label(_title) != _title else None)
+with st.sidebar.expander("More", icon=":material/more_horiz:",
+                         expanded=st.session_state["page"] in ui.MORE_PAGES), st.container(key="nav_more"):
+    for _title in ui.MORE_PAGES:
         st.button(_title, key=ui.nav_key(_title), on_click=open_page, args=(_title,), width="stretch")
 PAGE = st.session_state["page"]
 
-with st.sidebar.container(key="sim_card"):
-    st.html(ui.section("Simulation clock", f"Today: {TODAY:%a, %b %d, %Y}" + (" (simulated)" if SIMULATED else ""),
-                       "clock", "violet"))
+# Planning settings: the simulation clock and every policy knob, collapsed so the menu stays short.
+# (Streamlit cannot nest expanders, so the former "Simulation settings" and "Smoothing constants"
+# expanders are plain labeled groups inside this one.)
+with st.sidebar.expander("Planning settings", icon=":material/tune:"):
+    st.markdown(f"**Simulation clock**  \nToday: {TODAY:%a, %b %d, %Y}" + (" (simulated)" if SIMULATED else ""))
     k1, k2 = st.columns(2)
     step_1 = k1.button("+1 day", type="primary", width="stretch",
                        help="Simulate one day: wards use stock, vendors ship, deliveries arrive")
     step_7 = k2.button("+7 days", width="stretch", help="Simulate a week")
     step_next = st.button("Next delivery", icon=":material/local_shipping:", width="stretch",
                           help="Jump to the day the next delivery arrives")
-with st.sidebar.expander("Simulation settings"):
     auto_mode = st.radio("Automatic reordering", sim.AUTO_MODES, key="auto_mode",
-                         help="What MedStock does each simulated evening for 🔴 items. Professional systems "
-                              "usually create drafts that a buyer approves; low-risk items are often fully automatic.")
+                         help="What MedStock does each simulated evening for items at their reorder point. "
+                              "Professional systems usually create drafts that a buyer approves; low-risk items "
+                              "are often fully automatic.")
     auto_receive = st.checkbox("Auto-receive deliveries at the dock", value=True, key="auto_receive",
                                help="Receive each delivery exactly as the vendor's ship notice (ASN) says. "
                                     "Turn off to receive by hand and check quantities, lots and expiry dates.")
@@ -150,19 +157,21 @@ with st.sidebar.expander("Simulation settings"):
         st.session_state["flash"] = "All data erased and the sample data reloaded. The clock is back to the real date."
 
     st.button("Reset to fresh sample data", icon=":material/restart_alt:", disabled=not really, on_click=reset_all)
-st.sidebar.subheader("Service level by criticality (VED)")
-sl_v = st.sidebar.slider("Vital items", 0.80, 0.999, 0.99, 0.001, format="%.3f")
-sl_e = st.sidebar.slider("Essential items", 0.80, 0.999, 0.95, 0.005, format="%.3f")
-sl_d = st.sidebar.slider("Desirable items", 0.50, 0.99, 0.90, 0.01, format="%.2f")
-st.sidebar.subheader("Demand forecast")
-SIMPLE = "Simple average (no forecast)"
-fc_method = st.sidebar.selectbox(
-    "Method", ["Auto (best per item)", *fc.METHODS, SIMPLE],
-    help="Auto backtests every method on the last 12 months and uses the one with the lowest MAD.")
-lookback = 90
-if fc_method == SIMPLE:
-    lookback = st.sidebar.select_slider("Average over the last … days", options=[30, 60, 90, 180, 365], value=90)
-with st.sidebar.expander("Smoothing constants"):
+    st.divider()
+    st.markdown("**Service level by criticality (VED)**")
+    sl_v = st.slider("Vital items", 0.80, 0.999, 0.99, 0.001, format="%.3f")
+    sl_e = st.slider("Essential items", 0.80, 0.999, 0.95, 0.005, format="%.3f")
+    sl_d = st.slider("Desirable items", 0.50, 0.99, 0.90, 0.01, format="%.2f")
+    st.divider()
+    st.markdown("**Demand forecast**")
+    SIMPLE = "Simple average (no forecast)"
+    fc_method = st.selectbox(
+        "Method", ["Auto (best per item)", *fc.METHODS, SIMPLE],
+        help="Auto backtests every method on the last 12 months and uses the one with the lowest MAD.")
+    lookback = 90
+    if fc_method == SIMPLE:
+        lookback = st.select_slider("Average over the last … days", options=[30, 60, 90, 180, 365], value=90)
+    st.caption("Smoothing constants")
     fc_params = {
         "ma_n": st.number_input("Moving average N (months)", 2, 12, fc.DEFAULT_PARAMS["ma_n"]),
         "alpha": st.slider("α level", 0.05, 0.9, fc.DEFAULT_PARAMS["alpha"], 0.05),
@@ -286,15 +295,35 @@ if PAGE == "Help":
 # ---------------------------------------------------------------------------
 # Dashboard page: what needs ordering today?
 # ---------------------------------------------------------------------------
+RISK_ORDER = {"🔴 No usable stock": 0, "🔴 Shortage risk": 1, "🟡 Shortage watch": 2, "🟢 OK": 3}
+
+
+def plain(label):
+    """'🔴 Shortage risk' -> 'Shortage risk': explicit text, never color or emoji alone."""
+    return str(label).split(" ", 1)[1] if str(label)[:1] in "🔴🟡🟢" else str(label)
+
+
+def card_row(key):
+    """A row of equal cards that wraps on narrow screens (4 across on desktop, 2 x 2 on a tablet).
+    The minimum card width for each row is set in ui.APP_CSS under 'responsive card rows'."""
+    return st.container(horizontal=True, wrap=True, gap="medium", key=key)
+
+
+def card_title(title, caption=None):
+    """Same title treatment for every dashboard card."""
+    st.markdown(f"**{title}**")
+    if caption:
+        st.caption(caption)
+
+
 if PAGE == "Dashboard":
-    st.header("Today's reorder dashboard")
     red = plan[plan["status"].str.startswith("🔴")]
     yellow = plan[plan["status"].str.startswith("🟡")]
-    vital_red = red[red["ved"] == "V"]
     at_risk = plan[plan["availability_risk"] != "🟢 OK"]
     vital_at_risk = at_risk[at_risk["ved"] == "V"]
+    vital_empty = int((vital_at_risk["usable"] == 0).sum())
 
-    # --- Weekly history for the KPI trend lines (only real ledger and usage history, never invented)
+    # Weekly history for the KPI deltas (only recorded usage and ledger history, never invented)
     try:
         wk = kpis.weekly(conn, TODAY - pd.Timedelta(days=56), TODAY).tail(8)
     except Exception:
@@ -304,65 +333,205 @@ if PAGE == "Dashboard":
     fr = wk["fill_rate"].dropna()
     iv = wk["inventory_value"].dropna() if "inventory_value" in wk else pd.Series(dtype=float)
 
-    c1, c2, c3, c4 = st.columns(4)
+    # Alert inputs
+    expired = lot_risk[lot_risk["days_left"] <= 0]
+    soon = lot_risk[(lot_risk["days_left"] > 0) & (lot_risk["days_left"] <= 30)]
+    at_dock = po_list[po_list["stage"] == "ARRIVED"] if len(po_list) else po_list
+    late = po_list[po_list["late"]] if len(po_list) else po_list
+    new_recalls = recall_list[pd.to_datetime(recall_list["date"]) > pd.Timestamp(TODAY) - pd.Timedelta(days=14)]
+    recent_so = stockouts[stockouts["date"] > pd.Timestamp(TODAY) - pd.Timedelta(days=30)]
+
+    # 1. Header
+    st.header("Today's reorder dashboard")
+    st.caption(f"{TODAY:%A, %B %d, %Y}" + (" · simulated date" if SIMULATED else ""))
+    summary = [f"**{n(len(red), 'item')}** to order now", f"**{n(len(vital_at_risk), 'Vital item')}** at risk"]
+    if len(recent_so):
+        summary.append(f"**{n(len(recent_so), 'stockout')}** in the last 30 days")
+    if len(active_outages):
+        summary.append(f"**{n(len(active_outages), 'vendor')}** unable to supply")
+    st.markdown(", ".join(summary[:-1]) + (" and " if len(summary) > 1 else "") + summary[-1] + ".")
+
+    # 2. KPI cards: same layout in all four (label, value, one line of context)
+    c1 = c2 = c3 = c4 = card_row("row_kpi")
     st.html("<style>" + ui.kpi_css({"kpi_now": ("cart", "red"), "kpi_vital": ("heart", "violet"),
                                     "kpi_fill": ("gauge", "green"), "kpi_value": ("dollar", "blue")}) + "</style>")
-    c1.container(key="kpi_now").metric("Order now", len(red),
-              help=f"Items at or below their reorder point. Another {len(yellow)} will reach it soon.")
-    c2.container(key="kpi_vital").metric("Vital items at risk", len(vital_at_risk),
-              help="Vital (V) items flagged by the availability projection: zero usable stock, or their "
-                   "usable stock runs out before the next reliable delivery. This is about what we can "
-                   "physically give patients, independent of the reorder point.")
+    c1.container(key="kpi_now").metric(
+        "Order now", f"{len(red):,}", delta=f"{len(yellow):,} more due soon", delta_color="off", delta_arrow="off",
+        help="Items at or below their reorder point (usable stock plus stock on order).")
+    c2.container(key="kpi_vital").metric(
+        "Vital items at risk", f"{len(vital_at_risk):,}", delta=f"{vital_empty:,} with no usable stock",
+        delta_color="off", delta_arrow="off",
+        help="Vital (V) items flagged by the availability projection: zero usable stock, or their "
+             "usable stock runs out before the next reliable delivery. This is about what we can "
+             "physically give patients, independent of the reorder point.")
     c3.container(key="kpi_fill").metric(
-        "Fill rate (4 weeks)", f"{fill_4w:.1%}" if fill_4w is not None else "n/a",
-        delta=f"{(fr.iloc[-1] - fr.iloc[-2]) * 100:+.1f} pts vs last week" if len(fr) >= 2 else None,
-        chart_data=(fr * 100).round(1).tolist() if len(fr) >= 2 else None, chart_type="area",
-        help="Share of requested units filled from the shelf. The line shows the last 8 weeks.")
+        "Fill rate", f"{fill_4w:.1%}" if fill_4w is not None else "n/a",
+        delta=(f"{(fr.iloc[-1] - fr.iloc[-2]) * 100:+.1f} pts vs last week" if len(fr) >= 2
+               else "No weekly history yet"),
+        delta_color="normal" if len(fr) >= 2 else "off", delta_arrow="auto" if len(fr) >= 2 else "off",
+        help="Share of requested units filled from the shelf over the last 4 weeks.")
     c4.container(key="kpi_value").metric(
-        "Inventory value on hand", f"${(plan['on_hand'] * plan['unit_cost']).sum():,.0f}",
-        delta=(f"{'+' if iv.iloc[-1] >= iv.iloc[-2] else '-'}${abs(iv.iloc[-1] - iv.iloc[-2]):,.0f} vs last week"
-               if len(iv) >= 2 else None), delta_color="off",
-        chart_data=iv.round(0).tolist() if len(iv) >= 2 else None, chart_type="area",
-        help="Stock on hand at unit cost. The line shows the value at the end of each of the last 8 weeks.")
+        "Inventory value", f"${(plan['on_hand'] * plan['unit_cost']).sum():,.0f}",
+        delta=((f"{'+' if iv.iloc[-1] >= iv.iloc[-2] else '-'}${abs(iv.iloc[-1] - iv.iloc[-2]):,.0f} vs last week")
+               if len(iv) >= 2 else "No weekly history yet"),
+        delta_color="off", delta_arrow="auto" if len(iv) >= 2 else "off",
+        help="Inventory value on hand: stock on the shelf at unit cost.")
 
-    if len(vital_at_risk):
-        empty = int((vital_at_risk["usable"] == 0).sum())
-        st.error(f"**{n(len(vital_at_risk), 'Vital item')} may run short.** "
-                 + (("1 item has" if empty == 1 else f"{empty} items have") + " no usable stock at all. "
-                    if empty else "")
-                 + "The most urgent are at the top. Check the reorder plan and open purchases below.")
-        vt = (vital_at_risk.assign(empty_rank=(vital_at_risk["usable"] > 0).astype(int))
-              .sort_values(["empty_rank", "days_of_supply"]))
-        vt = pd.DataFrame({
-            "Item": vt["name"],
-            "Risk": vt["availability_risk"],
-            "Usable stock": vt["usable"].astype(int).astype(str) + " " + vt["unit"],
-            "Days of supply": vt["days_of_supply"].clip(lower=0).round(0),
-            "Runs out": pd.to_datetime(vt["shortage_date"]),
-            "On order": vt["on_order"].astype(int),
-            "Suggested order": vt["order_qty"].astype(int),
-            "Vendor": vt["order_vendor"],
+    # 3. Urgent inventory actions
+    st.subheader("Urgent inventory actions")
+    urgent = plan[plan["status"].str.startswith("🔴") | plan["availability_risk"].str.startswith("🔴")]
+    urgent = (urgent.assign(risk_rank=urgent["availability_risk"].map(RISK_ORDER).fillna(9),
+                            ved_rank=urgent["ved"].map({"V": 0, "E": 1, "D": 2}))
+              .sort_values(["risk_rank", "ved_rank", "days_of_supply"]))
+    if urgent.empty:
+        st.success("Nothing urgent: no item is at its reorder point or projected to run short.")
+    else:
+        top = urgent.head(8)
+        risk_text = np.where(top["availability_risk"] == "🟢 OK", "Order now", top["availability_risk"].map(plain))
+        ut = pd.DataFrame({
+            "Item": top["name"] + np.where(top["ved"] == "V", " (Vital)", ""),
+            "Risk": risk_text,
+            "Days left": top["days_of_supply"].clip(lower=0),
+            "On order": top["on_order"].astype(int),
+            "Suggested order": top["order_qty"].astype(int),
+            "Vendor": top["order_vendor"],
         })
-        with st.container(key="vital_table"):
-            st.dataframe(vt, hide_index=True, width="stretch", height=min(38 + 35 * len(vt), 320),
-                         column_config={
-                             "Days of supply": st.column_config.ProgressColumn(
-                                 "Days of supply", format="%d days", min_value=0, max_value=30,
-                                 help="Usable stock divided by expected daily demand. The bar is full at 30 days."),
-                             "Runs out": st.column_config.DateColumn(
-                                 "Runs out", format="MMM D", help="First day usable stock is projected to hit zero"),
-                             "Suggested order": st.column_config.NumberColumn(
-                                 help="Order quantity from the reorder plan (0 = not at the reorder point yet)"),
-                         })
+        with st.container(key="urgent_table"):
+            st.dataframe(ut, hide_index=True, width="stretch", column_config={
+                "Risk": st.column_config.TextColumn(help="No usable stock, then shortage risk, then items at "
+                                                         "their reorder point"),
+                "Days left": st.column_config.NumberColumn(format="%.1f", help="Usable stock ÷ expected daily demand"),
+                "On order": st.column_config.NumberColumn(format="%d"),
+                "Suggested order": st.column_config.NumberColumn(format="%d", help="From the reorder plan; 0 = "
+                                                                 "not at the reorder point yet"),
+            })
+        st.button(f"View all {len(plan)} items", icon=":material/list:", key="view_all_items",
+                  on_click=open_page, args=("Inventory",),
+                  help=f"Showing the {len(top)} most urgent of {n(len(urgent), 'item')} that need action")
 
-    # --- Row: demand trend and reorder status
+    # Draft purchase orders: created only on request, never sent or approved automatically
+    with st.container(border=True, key="card_drafts"):
+        drafted = pu.items_in_drafts(conn)
+        to_order = red[(red["order_qty"] > 0) & ~red["item_id"].isin(drafted)]
+        if drafted:
+            st.info(f"{n(len(set(drafted.values())), 'draft PO')} with {n(len(drafted), 'item')} "
+                    f"{'is' if len(set(drafted.values())) == 1 else 'are'} waiting for approval "
+                    "in Purchasing. A draft is not an order yet: the vendor has not received it.")
+            st.button("Review drafts in Purchasing", icon=":material/arrow_forward:", icon_position="right",
+                      key="review_drafts", on_click=open_purchase_order, args=(sorted(set(drafted.values()))[0],))
+        if len(to_order):
+            to_order = to_order.assign(order_value=np.where(to_order["order_vendor"] != to_order["supplier"],
+                                                            to_order["order_value"] * (1 + pu.BACKUP_PREMIUM),
+                                                            to_order["order_value"]),
+                                       name=np.where(to_order["order_vendor"] != to_order["supplier"],
+                                                     to_order["name"] + " (backup)", to_order["name"]))
+            to_order = to_order[~to_order["order_vendor"].isin(active_outages["supplier"])]
+            sugg = (to_order.groupby("order_vendor")
+                    .agg(lines=("name", "count"), items=("name", ", ".join), value=("order_value", "sum"))
+                    .reset_index().rename(columns={"order_vendor": "supplier"}))
+            sugg["freight"] = [pu.freight(v, x) for v, x in zip(sugg["supplier"], sugg["value"])]
+            if sugg.empty:
+                st.warning("Items need ordering, but their primary AND backup vendors are both disrupted. "
+                           "Watch stock closely and consider substitutes until a vendor is back.")
+            else:
+                st.markdown(f"**Suggested purchase orders:** {n(len(sugg), 'vendor')}, "
+                            f"{n(int(sugg['lines'].sum()), 'item')}, estimated **${sugg['value'].sum():,.0f}**"
+                            + (f" plus ${sugg['freight'].sum():,.0f} freight" if sugg["freight"].sum() else "") + ".")
+                if st.button(f"Prepare {n(len(sugg), 'draft purchase order')}, one per vendor",
+                             icon=":material/edit_note:", type="primary", key="prepare_drafts"):
+                    made = pu.draft_suggested_orders(conn, plan)
+                    if made:
+                        open_purchase_order(made[0])          # take the buyer straight to the first draft
+                    done(f"Drafted {', '.join(made)} with the suggested quantities. Review each one and approve "
+                         "it to send it to the vendor.")
+                st.caption("This only creates drafts. Nothing is sent to a vendor until you review and approve "
+                           "each draft in Purchasing.")
+                with st.expander("Breakdown by vendor"):
+                    st.dataframe(sugg, hide_index=True, width="stretch", column_config={
+                        "supplier": "Vendor", "lines": st.column_config.NumberColumn("Items", format="%d"),
+                        "items": "Item names",
+                        "value": st.column_config.NumberColumn("PO value", format="$%,.0f"),
+                        "freight": st.column_config.NumberColumn(
+                            "Freight", format="$%,.0f", help="Vendor's freight charge; free above its threshold")})
+        elif not drafted:
+            st.success("Nothing to order right now. Everything at risk is already on order.")
+
+    # 4. Supply alerts: three cards with the same layout (title, status label, description, action)
+    st.subheader("Supply alerts")
+
+    def alert_card(col, key, title, question, icon_name, color, ok, text, action, page=None, po=None):
+        with col.container(border=True, height="stretch", key=key):
+            st.html(ui.section(title, question, icon_name, color))
+            if ok:
+                st.badge("All clear", icon=":material/check_circle:", color="green")
+            else:
+                st.badge("Needs attention", icon=":material/warning:", color="orange")
+            st.markdown(text)
+            if po:
+                st.button(action, key="dock_receive", on_click=open_purchase_order, args=(po,),
+                          icon=":material/arrow_forward:", icon_position="right")
+            else:
+                st.button(action, key=f"{key}_open", on_click=open_page, args=(page,),
+                          icon=":material/arrow_forward:", icon_position="right")
+
+    a1 = a2 = a3 = card_row("row_supply")
+    exp_parts = []
+    if len(expired):
+        exp_parts.append(f"{n(len(expired), 'expired lot')} still on the shelf (${expired['value'].sum():,.0f})")
+    if len(soon):
+        exp_parts.append(f"{n(len(soon), 'lot')} expiring within 30 days")
+    alert_card(a1, "supply_expiry", "Expiring stock", "Lots past or near their expiry date", "expiry", "amber",
+               not exp_parts, (" and ".join(exp_parts) + ".") if exp_parts else "No expired lots and none "
+               "expiring in the next 30 days.", "Review expiring lots", page="Expiry")
+    if len(rising):
+        names = ", ".join(f"{r.name} (+{r.change_90:.0%})" for r in rising.head(3).itertuples())
+        more = f" and {len(rising) - 3} more" if len(rising) > 3 else ""
+        rise_text = (f"{n(len(rising), 'item')} forecast to rise over the next 90 days: {names}{more}. "
+                     "Reorder points already include the rise.")
+    else:
+        rise_text = "No item is forecast to rise sharply over the next 90 days."
+    alert_card(a2, "supply_demand", "Rising demand", "Items getting busier in the next 90 days", "trend", "violet",
+               not len(rising), rise_text, "Review the forecast", page="Forecast")
+    vend_parts = []
+    for o in active_outages.itertuples():
+        vend_parts.append(f"{o.supplier} cannot supply until {pd.Timestamp(o.end_date):%b %d}; its items use "
+                          f"the backup vendor at +{pu.BACKUP_PREMIUM:.0%}.")
+    if len(late):
+        vend_parts.append(f"{n(len(late), 'late delivery', 'late deliveries')}: " + ", ".join(
+            f"{r.order_no} from {r.supplier} (promised {pd.Timestamp(r.promised_date):%b %d})"
+            for r in late.head(3).itertuples()) + ".")
+    for r in new_recalls.itertuples():
+        vend_parts.append(f"Class {r.recall_class} recall of lot {r.lot_no} ({r.name}).")
+    if len(at_dock):
+        vend_parts.append(f"{n(len(at_dock), 'delivery', 'deliveries')} waiting at the dock and not yet usable.")
+    if len(at_dock):
+        v_action, v_page, v_po = f"Receive {at_dock['order_no'].iloc[0]}", None, at_dock["order_no"].iloc[0]
+    elif len(active_outages) or len(new_recalls):
+        v_action, v_page, v_po = "Open alerts", "Recalls & disruptions", None
+    else:
+        v_action, v_page, v_po = "Open purchasing", "Purchasing", None
+    alert_card(a3, "supply_vendors", "Vendor delays", "Late deliveries, outages and recalls", "truck", "red",
+               not vend_parts, " ".join(vend_parts) if vend_parts else "All open orders are on schedule and no "
+               "vendor is disrupted.", v_action, page=v_page, po=v_po)
+
+    # 5. Analytics: two rows of two equal cards, same height, titles and legend placement
+    st.subheader("Analytics")
+    CHART_H = 280
     CHART = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=8, r=8, t=8, b=8),
-                 font=dict(color="#4A4F6A", size=12), hoverlabel=dict(bgcolor="#FFFFFF"))
-    g1, g2 = st.columns([1.9, 1], gap="medium")
-    with g1.container(border=True, key="card_demand"):
-        st.markdown("**Demand: last 8 weeks and the next 4**")
-        hist = usage[usage["date"] > pd.Timestamp(TODAY) - pd.Timedelta(days=56)]
-        actual = hist.set_index("date")["qty_used"].resample("W-SUN", label="left", closed="left").sum()
+                 font=dict(color="#4A4F6A", size=12), hoverlabel=dict(bgcolor="#FFFFFF"), height=CHART_H,
+                 legend=dict(orientation="h", y=1.08, x=0, xanchor="left"))
+    PLOT_CFG = {"displayModeBar": False}
+    r1a = r1b = card_row("row_chart1")
+    with r1a.container(border=True, height="stretch", key="card_demand"):
+        card_title("Demand trend", "Units requested per week: the last 8 weeks and a 4-week forecast.")
+        week0 = pd.Timestamp(TODAY).to_period("W-SUN").start_time          # Monday of the current week
+        hist = usage[(usage["date"] >= week0 - pd.Timedelta(weeks=8)) & (usage["date"] < week0)]
+        if len(hist):                                   # keep only weeks with all 7 days of recorded usage
+            wkly = hist.set_index("date")["qty_used"].resample("W-MON", label="left", closed="left")
+            days = hist.groupby(pd.Grouper(key="date", freq="W-MON", label="left", closed="left"))["date"].nunique()
+            actual = wkly.sum()[days.reindex(wkly.sum().index, fill_value=0) == 7]
+        else:
+            actual = pd.Series(dtype=float)
         future = np.zeros(28)
         for v in daily_demand.values():
             arr = np.asarray(v, dtype=float).ravel()
@@ -371,116 +540,62 @@ if PAGE == "Dashboard":
         fvals = future.reshape(4, 7).sum(axis=1)
         fig = go.Figure()
         if len(actual):
-            fig.add_scatter(x=actual.index, y=actual.values, name="Actual", mode="lines+markers",
-                            line=dict(color="#F2706B", width=2.5, shape="spline"), marker=dict(size=6),
-                            fill="tozeroy", fillcolor="rgba(242,112,107,.08)")
+            fig.add_scatter(x=actual.index, y=actual.values.round(0), name="Actual", mode="lines+markers",
+                            line=dict(color="#F2706B", width=2.5), marker=dict(size=6),
+                            hovertemplate="Week of %{x|%b %d}: %{y:,.0f} units<extra>Actual</extra>")
             fx, fy = [actual.index[-1], *fweeks], [actual.values[-1], *fvals]
         else:
             fx, fy = list(fweeks), list(fvals)
-        fig.add_scatter(x=fx, y=fy, name="Forecast", mode="lines+markers",
-                        line=dict(color="#6D4AFF", width=2.5, dash="dash", shape="spline"), marker=dict(size=6))
-        fig.update_layout(**CHART, height=290, legend=dict(orientation="h", y=1.12, x=1, xanchor="right"),
-                          yaxis=dict(title="Units per week", gridcolor="#EEEAF8", zeroline=False),
+        fig.add_scatter(x=fx, y=np.round(fy, 0), name="Forecast", mode="lines+markers",
+                        line=dict(color="#6D4AFF", width=2.5, dash="dash"), marker=dict(size=6, symbol="diamond"),
+                        hovertemplate="Week of %{x|%b %d}: %{y:,.0f} units<extra>Forecast</extra>")
+        fig.update_layout(**CHART, yaxis=dict(gridcolor="#EEEAF8", zeroline=False, tickformat=",.0f"),
                           xaxis=dict(gridcolor="rgba(0,0,0,0)"), hovermode="x unified")
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_demand")
-    with g2.container(border=True, key="card_status"):
-        st.markdown("**Reorder status**")
+        st.plotly_chart(fig, width="stretch", config=PLOT_CFG, key="chart_demand")
+    with r1b.container(border=True, height="stretch", key="card_status"):
+        card_title("Reorder status", f"How the {len(plan)} items stand against their reorder points.")
         counts = [len(red), len(yellow), len(plan) - len(red) - len(yellow)]
-        fig = go.Figure(go.Pie(labels=["Order now", "Order soon", "Enough stock"], values=counts, hole=.68,
-                               sort=False, marker=dict(colors=["#F2706B", "#F5B544", "#22B3A6"],
-                                                       line=dict(color="#FFFFFF", width=3)),
-                               textinfo="none", hovertemplate="%{label}: %{value} items<extra></extra>"))
-        fig.update_layout(**CHART, height=290, showlegend=True,
-                          legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center"),
-                          annotations=[dict(text=f"<b style='font-size:26px;color:#1B1F3B'>{len(plan)}</b><br>items",
-                                            showarrow=False, x=0.5, y=0.5)])
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_status")
-
-    # --- Row: supply alerts, vendor reliability, ABC-VED mix
-    alerts = []          # (color, icon, title, detail, page to open)
-    for o in active_outages.itertuples():
-        n_items = int((plan["supplier"] == o.supplier).sum())
-        alerts.append(("red", "truck", f"{o.supplier} cannot supply",
-                       f"Until {pd.Timestamp(o.end_date):%b %d} ({o.reason}). Its {n(n_items, 'item')} use the "
-                       f"backup vendor at +{pu.BACKUP_PREMIUM:.0%}.", "Recalls & disruptions"))
-    new_recalls = recall_list[pd.to_datetime(recall_list["date"]) > pd.Timestamp(TODAY) - pd.Timedelta(days=14)]
-    for r in new_recalls.itertuples():
-        alerts.append(("red", "alert", f"Class {r.recall_class} recall: lot {r.lot_no}",
-                       f"{r.name}, {r.reason}. {r.qty_removed:,} pulled; wards that received it: {r.wards}.",
-                       "Recalls & disruptions"))
-    at_dock = po_list[po_list["stage"] == "ARRIVED"] if len(po_list) else po_list
-    late = po_list[po_list["late"]] if len(po_list) else po_list
-    if len(at_dock):
-        alerts.append(("amber", "box", f"{n(len(at_dock), 'delivery', 'deliveries')} at the dock",
-                       f"{', '.join(at_dock['order_no'])}. Stock on the dock cannot be issued until received.",
-                       "dock"))
-    if len(late):
-        alerts.append(("amber", "clock", f"{n(len(late), 'late delivery', 'late deliveries')}",
-                       ", ".join(f"{r.order_no} from {r.supplier} (promised {pd.Timestamp(r.promised_date):%b %d})"
-                                 for r in late.itertuples()), "Purchasing"))
-    recent_so = stockouts[stockouts["date"] > pd.Timestamp(TODAY) - pd.Timedelta(days=30)]
-    if len(recent_so):
-        by_item = recent_so.groupby(["name", "ved"])["qty_short"].sum().sort_values(ascending=False)
-        top = ", ".join(f"{nm} ({ved}, {q:,} short)" for (nm, ved), q in by_item.head(3).items())
-        more = f" and {len(by_item) - 3} more" if len(by_item) > 3 else ""
-        alerts.append(("red", "alert", f"{n(len(recent_so), 'stockout')} in the last 30 days", top + more, "KPIs"))
-    expired = lot_risk[lot_risk["days_left"] <= 0]
-    soon = lot_risk[(lot_risk["days_left"] > 0) & (lot_risk["days_left"] <= 30)]
-    if len(expired) or len(soon):
-        parts = []
-        if len(expired):
-            parts.append(f"{n(len(expired), 'expired lot')} still on the shelf (${expired['value'].sum():,.0f})")
-        if len(soon):
-            parts.append(f"{n(len(soon), 'lot')} expiring within 30 days")
-        alerts.append(("amber", "expiry", "Expiring stock", " and ".join(parts) + ".", "Expiry"))
-    if len(rising):
-        names = ", ".join(f"{r.name} (+{r.change_90:.0%})" for r in rising.head(3).itertuples())
-        more = f" and {len(rising) - 3} more" if len(rising) > 3 else ""
-        alerts.append(("violet", "trend", f"Demand rising for {n(len(rising), 'item')}",
-                       f"Next 90 days: {names}{more}. Reorder points already include it.", "Forecast"))
-
-    a1, a2, a3 = st.columns([1.35, 1, 1], gap="medium")
-    with a1.container(border=True, key="card_alerts"):
-        st.markdown("**Supply alerts**")
-        if not alerts:
-            st.caption("Nothing needs attention right now.")
-        for i, (color, ic, title, detail, page) in enumerate(alerts):
-            with st.container(horizontal=True, vertical_alignment="center", key=f"alert_{i}", gap="small"):
-                st.html(f'<div class="ms-alert"><img src="{ui.tile_uri(ic, color)}" width="34" height="34" alt="">'
-                        f'<div><b>{html.escape(title)}</b><span>{html.escape(detail)}</span></div></div>')
-                if page == "dock":
-                    st.button("Receive", key="dock_receive", on_click=open_purchase_order,
-                              args=(at_dock["order_no"].iloc[0],))
-                else:
-                    st.button("Open", key=f"alert_open_{i}", on_click=open_page, args=(page,),
-                              help=f"Open {page}")
-    with a2.container(border=True, key="card_vendors"):
-        st.markdown("**Vendor on-time delivery**")
+        labels = [f"Order now ({counts[0]})", f"Order soon ({counts[1]})", f"Enough stock ({counts[2]})"]
+        fig = go.Figure(go.Pie(labels=labels, values=counts, hole=.62, sort=False, direction="clockwise",
+                               marker=dict(colors=["#F2706B", "#F5B544", "#22B3A6"],
+                                           line=dict(color="#FFFFFF", width=2)),
+                               textinfo="none", hovertemplate="%{label}<extra></extra>"))
+        fig.update_layout(**CHART, annotations=[dict(text=f"<b>{len(plan)}</b><br>items", showarrow=False,
+                                                     font=dict(size=16, color="#1B1F3B"))])
+        st.plotly_chart(fig, width="stretch", config=PLOT_CFG, key="chart_status")
+    r2a = r2b = card_row("row_chart2")
+    with r2a.container(border=True, height="stretch", key="card_vendors"):
+        card_title("Vendor performance", "Share of deliveries that arrived within the quoted lead time.")
         sc = pu.vendor_scorecard(conn).dropna(subset=["on_time"])
         if sc.empty:
-            st.caption("No deliveries received yet. Run the simulation clock to build a vendor history.")
+            st.info("No deliveries received yet. Run the simulation clock (Planning settings) to build a "
+                    "vendor history.")
         else:
             sc = sc.sort_values("on_time")
-            fig = go.Figure(go.Bar(x=sc["on_time"] * 100, y=sc["vendor"], orientation="h",
-                                   marker=dict(color="#6D4AFF", cornerradius=6),
-                                   text=[f"{v:.0%}" for v in sc["on_time"]], textposition="outside",
-                                   hovertemplate="%{y}: %{x:.0f}% on time<extra></extra>"))
-            fig.update_layout(**CHART, height=260, xaxis=dict(range=[0, 115], visible=False),
-                              yaxis=dict(automargin=True), bargap=0.45)
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_vendors")
-    with a3.container(border=True, key="card_abcved"):
-        st.markdown("**ABC-VED mix**")
+            fig = go.Figure(go.Bar(x=(sc["on_time"] * 100).round(1), y=sc["vendor"], orientation="h",
+                                   marker=dict(color="#6D4AFF"), text=[f"{v:.1%}" for v in sc["on_time"]],
+                                   textposition="outside", cliponaxis=False,
+                                   hovertemplate="%{y}: %{x:.1f}% on time<extra></extra>"))
+            fig.update_layout(**CHART, xaxis=dict(range=[0, 120], visible=False), yaxis=dict(automargin=True),
+                              bargap=0.45, showlegend=False)
+            st.plotly_chart(fig, width="stretch", config=PLOT_CFG, key="chart_vendors")
+    with r2b.container(border=True, height="stretch", key="card_abcved"):
+        card_title("ABC-VED mix", "Items by spend class (A = highest) and clinical criticality.")
         mix = pd.crosstab(plan["abc"], plan["ved"]).reindex(index=["A", "B", "C"], columns=["V", "E", "D"],
                                                               fill_value=0)
         fig = go.Figure(go.Heatmap(z=mix.values, x=["Vital", "Essential", "Desirable"], y=["A", "B", "C"],
                                    text=mix.values, texttemplate="%{text}", textfont=dict(size=14),
                                    colorscale=[[0, "#F3F1FC"], [1, "#6D4AFF"]], showscale=False, xgap=4, ygap=4,
-                                   hovertemplate="%{y}%{x}: %{z} items<extra></extra>"))
-        fig.update_layout(**CHART, height=260, yaxis=dict(autorange="reversed", title="Spend class"),
-                          xaxis=dict(side="top"))
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="chart_abcved")
-        st.caption("A = highest spend. Vital items in class A get the closest control.")
+                                   hovertemplate="Class %{y}, %{x}: %{z} items<extra></extra>"))
+        fig.update_layout(**CHART, yaxis=dict(autorange="reversed"), xaxis=dict(side="top"))
+        st.plotly_chart(fig, width="stretch", config=PLOT_CFG, key="chart_abcved")
 
+# ---------------------------------------------------------------------------
+# Inventory page: the full reorder plan with filters (moved here from the dashboard)
+# ---------------------------------------------------------------------------
+if PAGE == "Inventory":
+    st.header("Inventory")
+    st.caption(f"Every item's reorder status, availability and suggested order as of {TODAY:%b %d, %Y}.")
     STATUSES = ["🔴 Order now", "🟡 Order soon", "🟢 OK"]
     RISKS = ["🔴 No usable stock", "🔴 Shortage risk", "🟡 Shortage watch", "🟢 Enough stock"]
     VED_NAMES = {"V": "V - Vital", "E": "E - Essential", "D": "D - Desirable"}
@@ -527,8 +642,10 @@ if PAGE == "Dashboard":
             "availability_risk": st.column_config.TextColumn(
                 "Availability", help="Projected from current usable stock over the next 90 days, FEFO. "
                                      "Independent of the reorder point."),
-            "status": "Reorder status", "ved": "VED", "abc": "ABC", "on_hand": "On hand", "on_order": "On order",
-            "usable": st.column_config.NumberColumn("Usable", help="On hand minus expired lots"),
+            "status": "Reorder status", "ved": "VED", "abc": "ABC",
+            "on_hand": st.column_config.NumberColumn("On hand", format="%d"),
+            "on_order": st.column_config.NumberColumn("On order", format="%d"),
+            "usable": st.column_config.NumberColumn("Usable", format="%d", help="On hand minus expired lots"),
             "rop": st.column_config.NumberColumn("Reorder point", format="%.0f"),
             "safety_stock": st.column_config.NumberColumn("Safety stock", format="%.0f"),
             "days_of_supply": st.column_config.NumberColumn("Days of supply", format="%.1f"),
@@ -543,46 +660,6 @@ if PAGE == "Dashboard":
                     "Plan **staged deliveries** or **expedited freight**, and re-check after the first receipt.")
     st.caption(f"Total of suggested orders: **${plan['order_value'].sum():,.0f}**. "
                "🔴 = usable + on order ≤ reorder point · 🟡 = will reach it within ~7 days." + cap_note)
-
-    st.subheader("Suggested purchase orders by vendor")
-    drafted = pu.items_in_drafts(conn)
-    to_order = red[(red["order_qty"] > 0) & ~red["item_id"].isin(drafted)]
-    if drafted:
-        st.info(f"{n(len(set(drafted.values())), 'draft PO')} with {n(len(drafted), 'item')} "
-                f"{'is' if len(set(drafted.values())) == 1 else 'are'} waiting for approval "
-                "in Purchasing. A draft is not an order yet: the vendor has not received it.")
-        st.button("Review drafts in Purchasing", icon=":material/arrow_forward:", icon_position="right",
-                  key="review_drafts", on_click=open_purchase_order, args=(sorted(set(drafted.values()))[0],))
-    if len(to_order):
-        to_order = to_order.assign(order_value=np.where(to_order["order_vendor"] != to_order["supplier"],
-                                                        to_order["order_value"] * (1 + pu.BACKUP_PREMIUM),
-                                                        to_order["order_value"]),
-                                   name=np.where(to_order["order_vendor"] != to_order["supplier"],
-                                                 to_order["name"] + " (backup)", to_order["name"]))
-        to_order = to_order[~to_order["order_vendor"].isin(active_outages["supplier"])]
-        sugg = (to_order.groupby("order_vendor")
-                .agg(lines=("name", "count"), items=("name", ", ".join), value=("order_value", "sum")).reset_index()
-                .rename(columns={"order_vendor": "supplier"}))
-        sugg["freight"] = [pu.freight(v, x) for v, x in zip(sugg["supplier"], sugg["value"])]
-        st.dataframe(sugg, hide_index=True, width="stretch", column_config={
-            "supplier": "Vendor", "lines": "Lines",
-            "value": st.column_config.NumberColumn("PO value", format="$%,.0f"),
-            "freight": st.column_config.NumberColumn("Freight", format="$%,.0f",
-                                                     help="Vendor's freight charge; free above its threshold")})
-        if sugg.empty:
-            st.warning("Items need ordering, but their primary AND backup vendors are both disrupted. "
-                       "Watch stock closely and consider substitutes until a vendor is back.")
-        elif st.button(f"Prepare {n(len(sugg), 'draft purchase order')}, one per vendor", icon=":material/edit_note:",
-                           type="primary", key="prepare_drafts"):
-            made = pu.draft_suggested_orders(conn, plan)
-            if made:
-                open_purchase_order(made[0])          # take the buyer straight to the first draft
-            done(f"Drafted {', '.join(made)} with the suggested quantities. Review each one and approve it to "
-                 "send it to the vendor.")
-        st.caption("Quantities, prices and vendors are filled in for you. You review, adjust and approve them in "
-                   "Purchasing before anything is sent to a vendor.")
-    elif not drafted:
-        st.success("Nothing to order right now. Everything at risk is already on order.")
 
     st.subheader("Measured fill rate from logged requests")
     st.caption("These are ACTUAL requests logged in this app (manual ward issues and simulated demand) since it "

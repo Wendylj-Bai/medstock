@@ -55,6 +55,7 @@ ICONS = {
     "factory": '<path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/>',
     "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     "sparkles": '<path d="M9.94 14.06 7.5 21l-2.44-6.94L-1.88 11.62 5.06 9.18 7.5 2.24l2.44 6.94 6.94 2.44z" transform="translate(4.5 0) scale(.85)"/><path d="M19 3v4"/><path d="M21 5h-4"/><path d="M18 15v3"/><path d="M19.5 16.5h-3"/>',
+    "list": '<path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/>',
     "logout": '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><path d="M21 12H9"/>',
 }
 
@@ -91,6 +92,7 @@ def img(name, color=COLORS["violet"], size=22, cls="ms-ico"):
 # The demo's pages, in sidebar order: (title, icon, color).
 PAGES = [
     ("Dashboard", "dashboard", "violet"),
+    ("Inventory", "list", "blue"),
     ("KPIs", "gauge", "blue"),
     ("Purchasing", "cart", "green"),
     ("Stock movements", "swap", "blue"),
@@ -103,6 +105,17 @@ PAGES = [
     ("Calculators", "calculator", "green"),
     ("Help", "help", "gray"),
 ]
+
+
+# Sidebar layout. Pages keep their internal titles (used in code and tests); some show a shorter
+# menu label. Every page in PAGES that is not a main page is listed under "More".
+MAIN_PAGES = ["Dashboard", "Inventory", "Purchasing", "Forecast", "Recalls & disruptions", "KPIs"]
+NAV_LABELS = {"Recalls & disruptions": "Alerts", "KPIs": "Reports"}
+MORE_PAGES = [t for t, _, _ in PAGES if t not in MAIN_PAGES]
+
+
+def nav_label(title):
+    return NAV_LABELS.get(title, title)
 
 
 def nav_key(title):
@@ -144,7 +157,7 @@ APP_CSS = """
   border-radius:999px;font-size:.72rem;font-weight:700;min-width:1.35rem;height:1.35rem;display:flex;
   align-items:center;justify-content:center;padding:0 .35rem;}
 [data-testid="stSidebar"] [class*="st-key-nav_"]{margin-bottom:-.55rem;}
-.st-key-nav_menu{gap:.15rem;}
+.st-key-nav_menu, .st-key-nav_more{gap:.15rem;}
 .ms-menu-label{color:#7A7F99;font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin:.2rem 0 .1rem .55rem;}
 
 /* dashboard cards and charts */
@@ -158,6 +171,13 @@ APP_CSS = """
 .ms-alert b{display:block;color:#1B1F3B;font-size:.92rem;line-height:1.3;}
 .ms-alert span{display:block;color:#6B7090;font-size:.82rem;line-height:1.4;margin-top:.1rem;}
 [class*="st-key-alert_"] button{padding:.2rem .8rem;min-height:2rem;font-size:.85rem;}
+
+/* responsive card rows (app.card_row): equal-height cards that wrap instead of squeezing */
+[class*="st-key-row_"]{align-items:stretch;}
+[class*="st-key-row_"] > *{min-width:0;}
+.st-key-row_kpi > *{flex:1 1 200px;}
+.st-key-row_supply > *{flex:1 1 240px;}
+.st-key-row_chart1 > *, .st-key-row_chart2 > *{flex:1 1 380px;}
 
 /* simulation card in the sidebar */
 .st-key-sim_card{background:#F7F6FD;border:1px solid #E7E4F5;border-radius:16px;padding:.9rem .85rem .8rem;}

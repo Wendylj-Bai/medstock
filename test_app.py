@@ -54,14 +54,19 @@ def open_page(at, title):
 
 
 def reorder_table(at):
-    """The dashboard's reorder plan (the vital-items table may sit above it)."""
+    """The full reorder plan on the Inventory page (moved there from the dashboard)."""
     return next(d.value for d in at.main.dataframe if "order_value" in d.value.columns)
 
 
+def urgent_table(at):
+    """The dashboard's 'Urgent inventory actions' table, or None when nothing is urgent."""
+    return next((d.value for d in at.main.dataframe if "Days left" in d.value.columns), None)
+
+
 def vital_table_items(at):
-    """Item names in the dashboard's 'Vital items at risk' table (empty if none are at risk)."""
-    t = next((d.value for d in at.main.dataframe if "Runs out" in d.value.columns), None)
-    return set() if t is None else set(t["Item"])
+    """Item names (without the ' (Vital)' tag) in the dashboard's urgent-actions table."""
+    t = urgent_table(at)
+    return set() if t is None else {name.removesuffix(" (Vital)") for name in t["Item"]}
 
 
 def usage_since(conn, days):
@@ -83,11 +88,12 @@ def test_app_sample_data_shows_risk_and_requests(app):
     at, conn = app
     assert len(at.exception) == 0
     assert vital_at_risk(at) >= 1
+    open_page(at, "Inventory")                                    # full table + measured fill rate live here
     infos = " | ".join(i.value for i in at.info)
     assert "No ward requests have been logged yet" in infos     # measured fill rate is real, not synthetic
     reports = " | ".join(m.value for m in at.metric if m.label == "Overall measured fill rate") == ""
     assert reports
-    # the dashboard reorder table carries the availability column
+    # the inventory reorder table carries the availability column
     dash_df = reorder_table(at)
     assert "availability_risk" in dash_df.columns
 
@@ -190,6 +196,7 @@ def test_app_issue_shortage_writes_once_and_reports_honestly(app):
 
 def test_dashboard_filters_and_sort_change_the_table(app):
     at, _ = app
+    open_page(at, "Inventory")
     table = lambda: reorder_table(at)
     total = len(table())
     at.multiselect(key="dash_ved").set_value(["V"]).run()
@@ -208,6 +215,7 @@ def test_dashboard_filters_and_sort_change_the_table(app):
 
 def test_dashboard_reorder_status_is_first_column_and_ok_can_go_on_top(app):
     at, _ = app
+    open_page(at, "Inventory")
     table = lambda: reorder_table(at)
     assert list(table().columns[:2]) == ["status", "availability_risk"]
     ranks = table()["status"].map({"🔴 Order now": 0, "🟡 Order soon": 1, "🟢 OK": 2}).tolist()
@@ -256,11 +264,34 @@ def test_preparing_drafts_on_the_dashboard_opens_purchasing_on_the_first_draft(a
     assert drafts and at.selectbox(key="po_pick").value == drafts[0]
 
 
-def test_vital_items_at_risk_show_as_a_sorted_table(app):
+def test_urgent_actions_table_is_short_sorted_and_labelled(app):
+    """The dashboard shows only the most urgent items (at most 8), worst first, with text labels."""
     at, _ = app
-    vital = next((d.value for d in at.main.dataframe if "Runs out" in d.value.columns), None)
-    if vital is None:                                            # nothing at risk in this sample
+    t = urgent_table(at)
+    if t is None:                                                # nothing urgent in this sample
         return
-    assert list(vital.columns[:3]) == ["Item", "Risk", "Usable stock"]
-    empty = vital["Usable stock"].str.startswith("0 ").tolist()
-    assert empty == sorted(empty, reverse=True)                  # items with no stock come first
+    assert list(t.columns) == ["Item", "Risk", "Days left", "On order", "Suggested order", "Vendor"]
+    assert 1 <= len(t) <= 8
+    order = {"No usable stock": 0, "Shortage risk": 1, "Shortage watch": 2, "Order now": 3}
+    ranks = t["Risk"].map(order).tolist()
+    assert None not in ranks and ranks == sorted(ranks)          # worst first, plain-text labels (no emoji)
+    assert not any(ch in "".join(t["Risk"]) for ch in "🔴🟡🟢")
+    assert at.button(key="view_all_items")                         # "View all items" goes to Inventory
+    at.button(key="view_all_items").click().run()
+    assert at.session_state["page"] == "Inventory"
+
+
+def test_dashboard_has_no_full_item_table_and_kpis_line_up(app):
+    at, _ = app
+    assert all("order_value" not in d.value.columns for d in at.main.dataframe)
+    labels = [m.label for m in at.metric][:4]
+    assert labels == ["Order now", "Vital items at risk", "Fill rate", "Inventory value"]
+    assert all(m.delta for m in at.metric[:4])                    # every card has one line of context
+
+
+def test_every_page_is_reachable_from_main_menu_or_more(app):
+    at, _ = app
+    keys = {b.key for b in at.sidebar.button}
+    for title, _, _ in ui.PAGES:
+        assert ui.nav_key(title) in keys, title
+    assert set(ui.MAIN_PAGES) | set(ui.MORE_PAGES) == {t for t, _, _ in ui.PAGES}

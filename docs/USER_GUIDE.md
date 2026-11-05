@@ -25,13 +25,17 @@ Then open **http://localhost:8501** in your browser. Leave the terminal window o
 
 ## 2. What's on the screen
 
-The sidebar on the left has three parts: the **menu** (one entry per page, with the open page
-highlighted), the **simulation clock**, and the hospital **policy settings** (how much protection
-each type of item gets, and how demand is forecast). Click a menu entry to open that page.
+The sidebar on the left has four parts: the **menu** with the six main pages (Dashboard, Inventory,
+Purchasing, Forecast, Alerts and Reports), **More** with every other page, **Planning settings**
+(the simulation clock and the hospital policy settings: how much protection each type of item gets
+and how demand is forecast), and **Project home / Sign out** at the bottom. "More" and "Planning
+settings" start collapsed; click them to open. In the menu, **Alerts** is the Recalls & disruptions
+page and **Reports** is the KPIs page.
 
 | Page | What it is for |
 |---|---|
-| **Dashboard** | Start here every day: what to order, what is at risk |
+| **Dashboard** | Start here every day: the most urgent items, draft purchase orders, supply alerts and charts |
+| **Inventory** | The full reorder plan for every item, with filters and sorting, plus the measured fill rate |
 | **KPIs** | Is inventory management working? Fill rate, stockouts, inventory turns, days on hand, waste, vendor reliability, weekly trends |
 | **Purchasing** | Purchase orders to vendors: drafts to approve, orders on their way, vendor messages, the vendor directory and scorecard |
 | **Stock movements** | Record what physically happens: issue to a department, receive a delivery, write off, count |
@@ -101,32 +105,50 @@ each type of item gets, and how demand is forecast). Click a menu entry to open 
 
 ## 5. The Dashboard
 
-### 5.1 The four numbers at the top
+The dashboard is a summary. Under the title you see the date (marked *simulated date* once the clock
+has moved) and one line such as *"44 items to order now and 40 Vital items at risk."*
 
-| Number | Meaning |
-|---|---|
-| 🔴 **Order now** | How many items need ordering today |
-| 🟡 **Order soon** | How many items will need ordering within about a week |
-| **Vital items at risk** | How many of the 🔴 items are **Vital** (see below) |
-| **Inventory value on hand** | Dollar value of everything on the shelf |
+### 5.1 The four cards at the top
 
-### 5.2 Vital items at risk: where to find them
+| Card | Meaning | The small line under the number |
+|---|---|---|
+| **Order now** | Items at or below their reorder point | How many more will reach it soon |
+| **Vital items at risk** | Vital items whose usable stock may run out before the next reliable delivery | How many have no usable stock at all |
+| **Fill rate** | Share of requested units filled from the shelf over the last 4 weeks | Change from last week, or *No weekly history yet* |
+| **Inventory value** | Dollar value of everything on the shelf | Change from last week, or *No weekly history yet* |
 
-"Vital items at risk" counts the items that are **both**:
-- **Vital (V)**: running out could harm a patient, **and**
-- **🔴 Order now**: usable stock + stock on order is at or below the reorder point.
+Hover over the **?** next to a card for its exact definition.
 
-You can see them in three places:
+### 5.2 Urgent inventory actions
 
-1. **The number:** third box at the top of the Dashboard. Hover over the **?** next to it for the definition.
-2. **The red box** right under the numbers: it names every Vital item at risk and how many days of
-   stock it has left, e.g. *"Lactated Ringer's 1L (12 days left)"*.
-3. **The table:** in the **Criticality** filter, choose **V - Vital**, and in **Reorder status**
-   choose 🔴 **Order now**. The table then shows only the Vital items at risk.
+A short table of the **8 most urgent items**: no usable stock first, then shortage risk, then items
+at their reorder point, Vital items before others. It shows the risk in words, days of stock left,
+what is already on order, the suggested order and the vendor. **View all items** opens the
+Inventory page with the full list.
 
-### 5.3 Filtering and sorting the table
+Right below it, **Suggested purchase orders** shows how many vendors and items are involved and the
+estimated value. **Prepare N draft purchase orders, one per vendor** creates drafts only. Nothing is
+sent: you review and approve each draft in Purchasing (6.3). Only then do the items count as
+*on order*. **Breakdown by vendor** lists each vendor's lines, value and freight.
 
-The four controls above the table work together, and every filter is strict (an empty filter means "all"):
+### 5.3 Supply alerts and analytics
+
+Three cards, each with a label (**Needs attention** or **All clear**), a short description and a
+button that opens the right page:
+
+- **Expiring stock:** expired lots still on the shelf, and lots expiring within 30 days.
+- **Rising demand:** items forecast to rise by 15% or more over the next 90 days. Their reorder
+  points already include the rise, so this is a heads-up.
+- **Vendor delays:** late deliveries, vendor outages, recent recalls and deliveries waiting at the
+  dock (then the button is **Receive** for that order).
+
+Below them, four charts: **Demand trend** (complete weeks of actual demand plus a 4-week forecast),
+**Reorder status** (Order now, Order soon, Enough stock, with counts), **Vendor performance**
+(share of deliveries on time) and **ABC-VED mix** (items by spend class and criticality).
+
+### 5.4 The full table (Inventory page)
+
+The **Inventory** page has the reorder plan for every item. The four controls above the table work together, and every filter is strict (an empty filter means "all"):
 
 | Control | What it does |
 |---|---|
@@ -146,22 +168,6 @@ Vital item with 🔴 availability.
 **Why does a Vital item disappear from the list after I order it?** Because it is no longer at risk:
 the order counts as *on order*, and usable + on order is now above the reorder point. If the delivery
 is late, watch **Open purchase orders** in Stock movements (late ones are marked *Overdue*).
-
-### 5.4 Other banners
-
-- ⏳ **Yellow box**: expired lots still on the shelf, or lots expiring within 30 days. Go to the Expiry page.
-- 📈 **Blue box**: items whose demand is forecast to rise by 15% or more over the next 90 days.
-  Their reorder points already include the rise, so nothing extra is needed. It is a heads-up.
-- 📦 **Deliveries at the dock**: a vendor delivery has arrived and must be received before it can be used.
-- ⏰ **Late vendor deliveries**: past the vendor's promised date and still not here.
-- 🚫 **Stockouts in the last 30 days**: wards asked for more than was on the shelf (this happens in the simulation).
-
-### 5.5 Placing the suggested orders
-
-Under **Suggested purchase orders by vendor** you see one line per vendor with the PO value and freight.
-Click **📝 Prepare N draft purchase order(s), one per vendor**. MedStock fills in the vendor, every
-item, the quantity (order up to R + Q) and the price. Nothing is sent yet: you review and approve the
-drafts in Purchasing (6.3). Only then do the items count as *on order* and turn 🟢 or 🟡.
 
 ---
 
