@@ -32,21 +32,40 @@ and how demand is forecast), and **Project home / Sign out** at the bottom. "Mor
 settings" start collapsed; click them to open. In the menu, **Alerts** is the Recalls & disruptions
 page and **Reports** is the KPIs page.
 
+**The notification bell** sits next to the word "Menu" at the top of the sidebar. It is the one place
+that counts active alerts:
+
+- recalled lots with a recall in the last 14 days,
+- vendors with a supply disruption today,
+- items with a lot on the shelf that has expired or expires within 30 days (an item counts once, however
+  many of its lots qualify; recalled lots are not counted again here).
+
+Reorder suggestions are not counted; they are on the Dashboard and Inventory. A red number appears on the
+bell only when there is at least one active alert (above 99 it shows "99+"). Click the bell to open
+**Alerts**. The bell is inside the sidebar, so on a phone it is hidden while the sidebar is closed; open
+the sidebar with the arrow at the top left to see it.
+
+**Actions that cannot be undone ask first.** Recalls, vendor disruptions (starting one, ending one early,
+or simulating a random one), write-offs, approving or cancelling a purchase order, deleting a draft,
+refusing a line at the dock and unusually large issues open a confirmation that lists exactly what will
+change. Nothing is saved until you press the confirm button; **Cancel**, the **X** or the **Esc** key
+leave everything as it was.
+
 | Page | What it is for |
 |---|---|
 | **Dashboard** | Start here every day: the most urgent items, draft purchase orders, supply alerts and charts |
-| **Inventory** | The full reorder plan for every item, with filters and sorting, plus the measured fill rate |
-| **KPIs** | Is inventory management working? Fill rate, stockouts, inventory turns, days on hand, waste, vendor reliability, weekly trends |
+| **Inventory** | Every item: search, quick views, filters, row actions and CSV export |
+| **KPIs** (Reports) | Is inventory management working? Fill rate (predicted and measured), stockouts, inventory turns, days on hand, waste, vendor reliability, weekly trends and CSV export |
 | **Purchasing** | Purchase orders to vendors: drafts to approve, orders on their way, vendor messages, the vendor directory and scorecard |
 | **Stock movements** | Record what physically happens: issue to a department, receive a delivery, write off, count |
-| **Recalls & disruptions** | Recall a lot, or make a vendor unable to supply, and watch how the system reacts. A red number on this menu entry counts active vendor outages and recalls from the last 14 days |
+| **Recalls & disruptions** | Recall a lot, or make a vendor unable to supply, and watch how the system reacts. The notification bell at the top of the sidebar counts active alerts and opens this page |
 | **Forecast** | Expected demand for the next 12 months, and which items are about to get busier |
 | **Expiry** | Expired stock, stock expiring soon, and stock that will expire before it can be used |
 | **Item detail** | Everything about one item, including how its reorder point was calculated |
 | **History** | Every movement ever recorded, record accuracy, and lot tracing for recalls |
 | **ABC-VED analysis** | Which items deserve the most attention (money × clinical importance) |
 | **Calculators** | What-if calculators for order quantity, reorder point and one-time purchases |
-| **Help** | This guide |
+| **Help** | Getting started, status definitions, workflows, formulas and how to reset the demo, plus this guide |
 
 ---
 
@@ -87,7 +106,7 @@ page and **Reports** is the KPIs page.
 1. Open 📋 **Dashboard**.
 2. Read the colored boxes at the top. **Red = Vital items at risk.** Handle those first.
 3. Check the 🔴 list and click **📝 Prepare draft purchase orders**.
-4. Go to 🛒 **Purchasing**, review each draft and click **✅ Approve & send to vendor** (6.3).
+4. Go to 🛒 **Purchasing**, review each draft, click **Review and approve**, then **Approve and send** (6.3).
 5. Receive anything waiting at the dock (📦 banner on the Dashboard, see 6.2).
 
 **During the day**
@@ -148,10 +167,34 @@ Below them, four charts: **Demand trend** (complete weeks of actual demand plus 
 
 ### 5.4 The full table (Inventory page)
 
-The **Inventory** page has the reorder plan for every item. The four controls above the table work together, and every filter is strict (an empty filter means "all"):
+The **Inventory** page lists every item. Start with the toolbar:
 
 | Control | What it does |
 |---|---|
+| **Search** | Finds items by name or ID (for example *insulin* or *MED007*) |
+| **Quick view** | All, Order now, Shortage risk, Incoming (an order is on its way) or Expiring (a lot has expired or expires within 30 days). Each button shows how many items it holds. |
+| **More filters and columns** | Reorder status, Availability, Criticality, Sort by, and extra calculation columns (on hand, reorder point, safety stock, VED, ABC, order value) |
+| **Clear filters** | Puts every filter back to "all" in one click |
+
+The table shows the item and its ID, one **Status**, usable stock, stock on order, days of supply, the
+suggested order and the vendor. **Status** is the more urgent of the item's two statuses:
+
+- **Reorder status**: is it time to place an order? (Order now, Order soon, OK)
+- **Availability**: will usable stock last? (No usable stock, Shortage risk, Shortage watch, Enough stock)
+
+An item can be OK for ordering but at risk for availability: an order is already on the way, but stock
+may run out before it arrives. Statuses are always written in words, never shown by color alone.
+
+**Select a row** (the box at its left) to open the item, issue stock, create a purchase order or see its
+history. **Download as CSV** exports every column with full precision for the items shown. The line above
+the table warns you if your filters are hiding a Vital item at risk. The measured fill rate from logged
+requests is on **Reports**.
+
+**Why does a Vital item disappear from the list after I order it?** Because it is no longer at risk:
+the order counts as *on order*, and usable + on order is now above the reorder point. If the delivery
+is late, watch **On order** in Stock movements (late lines are marked).
+
+---|---|
 | **Reorder status** | 🔴 / 🟡 / 🟢 from the reorder point: is it time to place an order? |
 | **Availability** | Will usable stock last the next 90 days? An item can be 🔴 here even with an order on the way, if that order arrives too late. |
 | **Criticality** | V - Vital, E - Essential, D - Desirable |
@@ -201,7 +244,8 @@ earliest-expiring one is issued first. If one of those lots is under recall, onl
    number and an expiry date, and the same lot number cannot appear twice.
 3. Check the yellow warning, if any: it appears when, at current usage, part of this lot would
    expire before it can be used. Consider refusing it or asking for a longer-dated lot.
-4. Click **Receive**, or **Refuse / cancel this line** to send it back.
+4. Click **Receive**, or **Refuse / cancel this line** to send it back. Refusing asks you to confirm and shows
+   the order, item, quantity and vendor first; the line then no longer counts as on order.
 
 MedStock records the real delivery time, which makes future reorder points more accurate.
 
@@ -214,12 +258,14 @@ MedStock records the real delivery time, which makes future reorder points more 
 3. Change quantities if needed (0 removes a line), add other items from the same vendor, set the
    **Need by** date and **Notes to vendor**.
 4. Watch the messages under the total: *below the vendor's minimum order* or *$X more and freight is free*.
-5. Click **✅ Approve & send to vendor**. (Or **💾 Save changes** to keep it as a draft, or **🗑️ Delete draft**.)
+5. Click **Review and approve**. A summary of the vendor, lines, total and need-by date opens; click
+   **Approve and send** to send it, or **Cancel** to keep editing. (Or **💾 Save changes** to keep it as a
+   draft, or **🗑️ Delete draft**, which also asks you to confirm.)
 6. **⬇️ Download PO document** gives a printable PO (open it in your browser, print or save as PDF).
 
 **To order something MedStock did not suggest:** Purchasing > **➕ New purchase order** > choose the vendor.
 Every item from that vendor is listed with its status and a *Suggested* quantity. Type the quantities you
-want under **Order qty**, then **Approve & send** or **Save as draft**.
+want under **Order qty**, then **Review and approve** or **Save as draft**.
 
 ### 6.4 Follow an order and cancel it
 Open the PO in Purchasing. The status bar shows where it is:
@@ -228,11 +274,14 @@ Open the PO in Purchasing. The status bar shows where it is:
 
 Under **Vendor messages** you see what the vendor has told you so far: the acknowledgement (and any
 **vendor backorder**), the shipment with tracking number, and the delivery (on time or late).
-**❌ Cancel order** is possible until the vendor ships.
+**❌ Cancel order** is possible until the vendor ships. It asks you to confirm, because a cancelled order cannot be reopened.
 
 ### 6.5 Write off stock (expired, damaged, recalled, lost)
-- **One lot:** 📦 **Stock movements** > **🗑️ Write-off** > choose the item and the **lot** > reason > quantity > **Write off**.
-- **All expired stock at once:** ⏳ **Expiry** page > **🗑️ Write off all expired lots**.
+- **One lot:** 📦 **Stock movements** > **Write-off** > choose the item and the **lot** > a **reason** (required) > quantity > **Review write-off**, then **Write off** in the confirmation.
+- **One expired lot:** ⏳ **Expiry** page > select the lot in the expired table > **Write off lot ...**.
+- **All expired stock at once:** ⏳ **Expiry** page > **Write off all expired lots**. The confirmation lists every lot, quantity and value first.
+
+A write-off cannot be undone. If one was a mistake, correct the shelf quantity with a cycle count.
 
 Write-offs are *not* counted as demand, so they do not make the forecast think the item is busier.
 
@@ -241,14 +290,16 @@ Write-offs are *not* counted as demand, so they do not make the forecast think t
 2. Choose the item and the **lot**.
 3. Count the boxes of that lot on the shelf and enter the number. The system quantity is hidden on purpose,
    so the count is not influenced by it (a *blind count*).
-4. Click **Save count**. If the number differs, MedStock corrects the stock and records the difference.
+4. Click **Save count**. The message shows what you counted and what the system expected. If they differ,
+   MedStock corrects the stock and records the difference.
 
 The **Record accuracy** number in History shows how often the counts matched. Aim for 97% or more.
 
 ### 6.7 Handle a recall
 1. 🚨 **Recalls & disruptions** > **Product recalls**.
-2. Choose the lot from the recall notice, its **class** and the reason, then **🚨 Issue recall for this lot**.
-   (Or press **🎲 Simulate a random manufacturer recall** to practice.)
+2. Choose the lot from the recall notice, its **class** and the reason, then **Review recall for this lot**.
+   (Or press **Simulate a random manufacturer recall** to practice.) A confirmation shows the item, units,
+   value, wards that already received it and the expected effect. Nothing changes until you click **Confirm recall**.
 3. MedStock then:
    - pulls every unit of the lot off the shelf (a loss, **not** demand, so the forecast is not inflated);
    - lists the **departments that already received it**, so they can check their shelves;
@@ -261,14 +312,15 @@ cause harm (for example a labeling error). Every movement of any lot: 📜 **His
 ### 6.8 When a vendor cannot supply (disruption)
 Every item has a **primary** vendor and a **backup** vendor (shown in Purchasing > 🏢 Vendors).
 1. 🚨 **Recalls & disruptions** > **Vendor disruptions**: choose the vendor, how many days, and why, then
-   **🏭 Start disruption** (or **🎲 Simulate a random disruption**).
+   **Review disruption** (or **Simulate a random disruption**), then **Start disruption** in the confirmation,
+   which lists the items that switch to a backup vendor.
 2. While it lasts:
    - orders that vendor receives are **rejected** at acknowledgement (you see ❌ in its vendor messages), and
      what was "on order" is no longer counted;
    - the Dashboard and the automatic reordering send that vendor's items to their **backup vendor**, at
      **+12%** price and with the backup's own lead time;
    - orders already shipped still arrive.
-3. Press **✅ … is supplying again** to end it early. Ordering then goes back to the primary vendor.
+3. Press **… is supplying again** to end it early, then confirm. Ordering then goes back to the primary vendor.
 
 ### 6.9 Check how well inventory is managed (KPIs)
 📊 **KPIs** > choose the period (30, 90 or 365 days).
@@ -291,6 +343,15 @@ Fill rate and inventory value usually move in opposite directions: that trade-of
 
 ### 6.11 See why an item has the reorder point it has
 **Item detail** > choose the item > open **Show the calculation**. Every number is shown step by step.
+
+### 6.12 Ask MedStock (AI assistant)
+**Ask MedStock** in the menu. Type a question, or click one of the example questions, for example
+"What should I order today, and why?". The assistant looks the answer up in MedStock's own data and
+shows, under each answer, how many lookups it made, how long it took, what it cost, and whether every
+figure in the answer was found in the data. Open **What it looked up** to see each lookup.
+- It can only **read**. It cannot order, issue, receive or change settings; it tells you which page does that.
+- **New conversation** clears the chat. **Audit log and spending** lists every answer with its cost.
+- It needs an Anthropic API key in the app's secrets. Each account has a daily spending limit.
 
 ---
 

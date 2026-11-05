@@ -157,3 +157,15 @@ def test_nested_atomic_rolls_back_cleanly(conn):
                         (T.isoformat(),)).fetchone()[0] == used
     db.issue(conn, "MED005", 2, "ICU", T)                                # the connection still works
     assert db.on_hand(conn, "MED005") == before - 2
+
+
+def test_shelf_life_warning_only_for_orders_the_cap_really_cut(conn):
+    """order_qty is a whole number, so it is usually a little below the exact target. That rounding must not
+    raise the shelf-life warning; only the shelf-life cap may."""
+    import planning
+    items, usage, deliveries, open_pos, _ = db.load_frames(conn)
+    plan = planning.build_plan(items, usage, deliveries, open_pos=open_pos)
+    capped = plan[plan["order_capped"]]
+    assert len(capped) < len(plan[plan["status"].str.startswith("🔴")])
+    for r in capped.itertuples():
+        assert r.order_qty == int(r.d * r.shelf_life_days * 0.8)       # the cap decided the quantity

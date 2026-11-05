@@ -89,8 +89,21 @@ def recalls(conn):
     return r
 
 
-def random_recall(conn, rng=None, on_date=None):
-    """A fictional manufacturer notice for a random lot that is on the shelf. Returns the summary or None."""
+def recall_preview(conn, lot_no):
+    """What a recall of lot_no would do, without changing anything (shown before the user confirms)."""
+    rows = conn.execute("SELECT l.item_id, l.qty, i.unit_cost, i.name, i.unit FROM lots l JOIN items i "
+                        "USING (item_id) WHERE l.lot_no = ?", (lot_no,)).fetchall()
+    incoming = conn.execute("SELECT COUNT(*) FROM purchase_orders WHERE status = 'OPEN' AND (asn_lot_no = ? OR "
+                            "po_id IN (SELECT po_id FROM asn_lots WHERE lot_no = ?))", (lot_no, lot_no)).fetchone()[0]
+    return {"lot_no": lot_no, "item_id": rows[0]["item_id"] if rows else None,
+            "name": rows[0]["name"] if rows else "", "unit": rows[0]["unit"] if rows else "",
+            "qty": sum(r["qty"] for r in rows), "value": sum(r["qty"] * r["unit_cost"] for r in rows),
+            "incoming_lines": incoming, "wards": wards_that_received(conn, lot_no)}
+
+
+def pick_random_recall(conn, rng=None, on_date=None):
+    """Choose the lot, class and reason for a fictional manufacturer notice, without applying it.
+    Returns {"lot_no", "recall_class", "reason"} or None when no lot is on the shelf."""
     rng = rng or np.random.default_rng()
     on_date = on_date or db.today(conn)
     candidates = conn.execute(
@@ -100,7 +113,16 @@ def random_recall(conn, rng=None, on_date=None):
         return None
     lot_no = candidates[rng.integers(len(candidates))][0]
     cls = str(rng.choice(list(RECALL_CLASSES), p=[0.2, 0.65, 0.15]))
-    return recall_lot(conn, lot_no, cls, str(rng.choice(RECALL_REASONS)), on_date, origin="Simulated notice")
+    return {"lot_no": lot_no, "recall_class": cls, "reason": str(rng.choice(RECALL_REASONS))}
+
+
+def random_recall(conn, rng=None, on_date=None):
+    """A fictional manufacturer notice for a random lot that is on the shelf. Returns the summary or None."""
+    on_date = on_date or db.today(conn)
+    pick = pick_random_recall(conn, rng, on_date)
+    if pick is None:
+        return None
+    return recall_lot(conn, pick["lot_no"], pick["recall_class"], pick["reason"], on_date, origin="Simulated notice")
 
 
 # ---------------------------------------------------------------------------
@@ -141,8 +163,9 @@ def outages(conn, today):
     return o
 
 
-def random_outage(conn, rng=None, on_date=None):
-    """A random vendor that is not disrupted becomes unable to supply for 1 to 4 weeks."""
+def pick_random_outage(conn, rng=None, on_date=None):
+    """Choose the vendor, length and reason of a random disruption, without applying it.
+    Returns {"supplier", "days", "reason"} or None when every vendor is already disrupted."""
     rng = rng or np.random.default_rng()
     on_date = on_date or db.today(conn)
     up = [v for v in pu.VENDORS if not pu.active_outage(conn, v, on_date)]
@@ -150,5 +173,50 @@ def random_outage(conn, rng=None, on_date=None):
         return None
     supplier = str(rng.choice(up))
     days = int(rng.integers(7, 29))
-    start_outage(conn, supplier, days, str(rng.choice(OUTAGE_REASONS)), on_date, origin="Simulated")
-    return {"supplier": supplier, "days": days}
+    return {"supplier": supplier, "days": days, "reason": str(rng.choice(OUTAGE_REASONS))}
+
+
+def random_outage(conn, rng=None, on_date=None):
+    """A random vendor that is not disrupted becomes unable to supply for 1 to 4 weeks."""
+    on_date = on_date or db.today(conn)
+    pick = pick_random_outage(conn, rng, on_date)
+    if pick is None:
+        return None
+    start_outage(conn, pick["supplier"], pick["days"], pick["reason"], on_date, origin="Simulated")
+    return {"supplier": pick["supplier"], "days": pick["days"]}
+
+
+# ---------------------------------------------------------------------------
+# Notification count (the bell in the sidebar)
+# ---------------------------------------------------------------------------
+RECENT_RECALL_DAYS = 14          # a recall stays an open alert for two weeks (same as the Alerts page)
+URGENT_EXPIRY_DAYS = 30          # same window as the Dashboard's "Expiring stock" alert
+
+
+def alert_counts(recalls, outages, lot_risk, today):
+    """Current actionable alerts, from data the app already has. Pure function (no database access).
+
+    recalls:  events.recalls(conn), one row per recall (lot_no, date)
+    outages:  events.outages(conn, today), with a 'state' column
+    lot_risk: planning.project_expiry(...) rows for lots on the shelf (item_id, lot_no, days_left)
+
+    Counts each underlying record once:
+    - recalls:      distinct recalled lots with a recall in the last 14 days
+    - disruptions:  distinct vendors with an active disruption today
+    - expiring:     distinct items with a lot that has expired or expires within 30 days; recalled lots are
+                    skipped (their stock is already pulled and counted as a recall)
+    General reorder suggestions are not alerts and are not counted.
+    """
+    cutoff = pd.Timestamp(today) - pd.Timedelta(days=RECENT_RECALL_DAYS)
+    recent = recalls[pd.to_datetime(recalls["date"]) > cutoff] if len(recalls) else recalls
+    n_recalls = recent["lot_no"].nunique() if len(recent) else 0
+    active = outages[outages["state"].astype(str).str.endswith("Active")] if len(outages) else outages
+    n_disruptions = active["supplier"].nunique() if len(active) else 0
+    recalled = set(recalls["lot_no"]) if len(recalls) else set()
+    lr = lot_risk[(lot_risk["days_left"] <= URGENT_EXPIRY_DAYS) & ~lot_risk["lot_no"].isin(recalled)] \
+        if len(lot_risk) else lot_risk
+    if len(lr) and "qty" in lr:
+        lr = lr[lr["qty"] > 0]
+    n_expiring = lr["item_id"].nunique() if len(lr) else 0
+    return {"recalls": int(n_recalls), "disruptions": int(n_disruptions), "expiring": int(n_expiring),
+            "total": int(n_recalls + n_disruptions + n_expiring)}

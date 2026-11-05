@@ -104,6 +104,7 @@ _EXTENSIONS = [
     ("Simulation clock", "Generates daily demand and vendor behavior, so a reorder policy can be tested over weeks in a few seconds."),
     ("Supply risk", "Lot recalls, vendor outages and switching to a backup vendor."),
     ("Reporting", "The KPI page, weekly trends, forecast backtesting, sign-in and this homepage."),
+    ("AI assistant", "Ask MedStock answers questions through read-only tools. Every answer is logged with its cost and checked for figures that did not come from the data."),
 ]
 
 _STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly"]
@@ -111,7 +112,7 @@ _STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly"]
 _NEXT = [
     ("Policy comparison", "Running two inventory policies over the same simulated period and comparing the results."),
     ("Ward supply rooms", "Par levels and transfers between the central storeroom and the wards."),
-    ("AI assistance", "Suggestions that explain themselves with the app's own numbers. Planned as the last phase."),
+    ("AI agents", "A buyer agent that proposes orders for approval, a disruption responder and a policy analyst, measured in the simulator."),
 ]
 
 # ---------------------------------------------------------------------------

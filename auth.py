@@ -73,31 +73,42 @@ def sign_out():
     st.session_state["view"] = "home"
 
 
+HIDE_SIDEBAR = ('<style>[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], '
+                '[data-testid="stExpandSidebarButton"]{display:none !important;}</style>')
+
+
 def render_login():
-    """Sign-in page shown between the homepage and the demo."""
+    """Sign-in page shown between the homepage and the demo. The demo menu is hidden until you sign in."""
+    st.html(HIDE_SIDEBAR)
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
         st.image(str(Path(__file__).parent / "assets" / "logo_wordmark.svg"), width=220)
-        st.caption("Sign in to open the inventory demo. Access is by invitation.")
+        st.markdown("**Sign in to the inventory demo**")
+        st.caption("Access is by invitation. Use the username and password you were given. The demo uses fictional "
+                   "data only.")
         if not configured_users():
             st.warning("Sign-in is not set up on this server yet (no accounts in the app's secrets).")
         with st.form("login_form"):
-            username = st.text_input("Username", key="login_user")
-            password = st.text_input("Password", type="password", key="login_pass")
+            username = st.text_input("Username", key="login_user", autocomplete="username")
+            password = st.text_input("Password", type="password", key="login_pass", autocomplete="current-password")
+            message = st.empty()             # the error appears here, inside the form, next to the fields
             submitted = st.form_submit_button("Sign in", type="primary", width="stretch")
         if submitted:
             fails = st.session_state.get("login_fails", 0)
             if fails >= MAX_FREE_ATTEMPTS:
                 time.sleep(min(2 ** (fails - MAX_FREE_ATTEMPTS), 30))
-            if verify(username, password):
+            if not username.strip() or not password:
+                message.error("Enter both your username and your password.", icon=":material/error:")
+            elif verify(username, password):
                 st.session_state.update(user=username.strip(), view="demo", login_fails=0)
                 st.rerun()
-            st.session_state["login_fails"] = fails + 1
-            st.error("Username or password is incorrect.")
-        if st.button("← Back to project home", key="login_back"):
+            else:
+                st.session_state["login_fails"] = fails + 1
+                message.error("Username or password is incorrect. Check both and try again.", icon=":material/error:")
+        if st.button("Back to project home", key="login_back", icon=":material/arrow_back:"):
             st.session_state["view"] = "home"
+            st.query_params.clear()
             st.rerun()
-
 
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "add":

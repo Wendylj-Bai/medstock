@@ -232,3 +232,75 @@ four-column rows squeezed labels down to one letter.
 **Decision:** Rows of cards wrap (4 across on a desktop, 2 x 2 on a tablet) instead of squeezing.
 Risk is always written out in words, not shown by color alone. The calculations did not change:
 the four KPI values were checked before and after and match.
+
+## 16. Ask MedStock, the first AI feature
+
+**Date:** November 3, 2026
+
+**Built:** An AI assistant page. You ask a question in plain English and it answers with
+MedStock's own numbers. It works through seven read-only tools that wrap functions the app already
+had (the reorder plan, item detail, KPIs, supply risks, purchase orders, lot trace and an item
+search). Every answer shows what it looked up, how long it took and what it cost, and all of that
+goes into an audit log. I also wrote a design document for the later AI phases (docs/AI_DESIGN.md).
+
+**Problem:** Language models can state numbers confidently that are not in the data, and an
+assistant with write access to a stock system is risky.
+
+**Decision:** The model does no inventory math and has no tool that changes anything. After each
+answer the app compares every figure with the tool results and flags any that did not come from
+the data. There is a daily dollar cap per user and a limit on lookups per question, and text from
+vendor notes or recalls is treated as data, never as instructions. The tests use a scripted fake
+model, so they are free and run offline.
+
+## 17. Audit fixes: safer actions and consistent pages
+
+**Date:** November 4, 2026
+
+**Built:** I ran a full product audit of the live demo and worked through it page by page.
+- **Confirmations:** recalls, vendor disruptions, random events, write-offs (one lot or all expired
+  lots), approving a purchase order, deleting a draft, cancelling an order and unusually large issues
+  now open a confirmation first. It lists exactly what will change, says whether it is a simulated
+  event, and nothing is saved until I press Confirm.
+- **Inventory:** search, quick views with counts (Order now, Shortage risk, Incoming, Expiring), one
+  status per item written as a word, optional calculation columns, row actions and a full CSV export.
+  The measured fill rate moved to Reports.
+- **Other pages:** Forecast starts with the items that are rising, Alerts separates active events,
+  recalls, disruptions and history, Reports explains metrics that cannot be calculated yet, Item
+  detail shows the operational numbers first and keeps the formulas under Calculations, and the
+  Calculators check their inputs and can reset to the slide example.
+- **Help:** a new Help page with statuses, workflows, formulas and how to reset the demo. The open
+  page is now in the address bar, so a reload returns to the same page after signing in.
+
+**Problem:** The audit said Help signed people out. It did not: Help works from the menu. Any reload
+starts a new browser session, and sign-in lives only in the session, so the audit tool landed on the
+sign-in screen. While checking, I also found two older bugs. The shelf-life warning fired for almost
+every order because rounding the order quantity looked like a cap. And Purchasing crashed when the
+clock moved past a draft's need-by date.
+
+**Decision:** A confirmation stores one pending action with an id and removes it before running it,
+so a Streamlit rerun or a double click can never apply it twice. Random events are chosen first and
+applied after Confirm, using the same random draws as before, so seeded simulations do not change. I
+compared every page's numbers before and after on the same data: the calculations did not change.
+
+## 18. Last two confirmations and a notification bell
+
+**Date:** November 4, 2026
+
+**Built:** Ending a vendor disruption early and refusing a delivery line at the dock now open a
+confirmation too, so every action that cannot be undone asks first. The disruption confirmation shows
+the vendor, the current disruption and how many items moved to a backup vendor. The dock confirmation
+shows the order and line, the item, the quantity refused and the vendor. I also added a notification
+bell at the top of the sidebar. It counts recalled lots from the last 14 days, vendors disrupted
+today, and items with stock that has expired or expires within 30 days, each record once. It opens
+Alerts, and the red number only appears when something is active.
+
+**Problem:** The Alerts menu item already had its own red number, counting something slightly
+different. Two numbers side by side that disagree are worse than one.
+
+**Decision:** The bell is the only count; the Alerts menu item no longer has a badge. The counting
+rules live in one small function (events.alert_counts) with its own tests: zero, one, several
+categories, no double counting and "99+". Tests also check that opening a confirmation, Cancel and a
+repeated request change nothing, that Confirm applies once, and that only one badge is drawn. The
+test tool cannot press Esc or the dialog's X, so I checked those in a real browser on a sandbox copy
+of the data: both closed the dialog without changing anything, and Confirm refused the line exactly
+once. Full suite: 136 tests pass.

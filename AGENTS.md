@@ -54,6 +54,10 @@ python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt   # first 
 - **Streamlit Cloud:** the same thing happens there. Its file system is temporary, so the live
   database resets to sample data whenever the app restarts. Sign-in accounts are pasted into the
   app's Secrets settings on Streamlit Cloud.
+- **After a push that changes a helper module** (`ui.py`, `db.py`, `planning.py` and so on), reboot the
+  live app: Streamlit Cloud > Manage app > Reboot. A push reloads `app.py`, but the server can keep
+  the old helper module in memory, and the new `app.py` then fails (for example `AttributeError:
+  module 'ui' has no attribute ...`).
 - **After a schema change, restart the local server.** The connection is cached with
   `st.cache_resource`, and migrations only run when a connection opens.
 
@@ -83,6 +87,7 @@ app.py draws the screens; homepage.py and auth.py gate them
 | `auth.py` | Sign-in with salted PBKDF2 hashes from Streamlit secrets | `render_login`, `verify`, `hash_password` |
 | `homepage.py` | Public portfolio page (no database access) | `render_homepage` |
 | `app.py` | All screens: 12 pages plus the sidebar | |
+| `assistant.py` | Ask MedStock: read-only tools over existing functions, the agent loop, audit log, spending cap, grounding check (see `docs/AI_DESIGN.md`) | `run_turn`, `TOOLS`, `run_tool`, `grounding_check` |
 | `ui.py` | Palette, icon set (Lucide-style line icons and solid feature icons), sidebar menu and card CSS | `PAGES`, `nav_css`, `kpi_css`, `tile_uri`, `solid_uri` |
 
 **Pages** are listed once, in `ui.PAGES` (title, icon, color). The sidebar menu is built from it
@@ -182,8 +187,10 @@ In no fixed order, except that AI comes last:
 4. **Plain-language rewrite** of `docs/USER_GUIDE.md` and `docs/HOW_IT_WORKS.md` (the homepage and
    README are done).
 5. **Automatic reset of the live demo data**, so visitors start clean.
-6. **AI integration** (last phase, not started). Any AI feature should explain its reasoning with
-   the app's own numbers and must not change stock without the user's approval.
+6. **AI agents** (started; plan in `docs/AI_DESIGN.md`). Phase 1, Ask MedStock, is built. Next: a
+   proposal queue and buyer agent, then a disruption responder and a policy analyst. Rules for every
+   AI feature: the engine does the math, tools are read-only or write proposals only, a person
+   approves any change, every run is logged, and the API key lives only in Streamlit secrets.
 
 ## 10. Decision log
 

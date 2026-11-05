@@ -128,3 +128,28 @@ def test_recall_of_one_lot_in_a_split_delivery_refuses_only_that_lot(conn, monke
     row = conn.execute("SELECT status, received_qty FROM purchase_orders WHERE po_id = ?", (line["po_id"],)).fetchone()
     assert row["status"] == "RECEIVED" and row["received_qty"] == sum(q for _, _, q in good)   # closed short
     assert pu.order_header(conn, order_no)["status"] == "RECEIVED"
+
+
+def test_random_picks_match_the_events_they_start(tmp_path):
+    """The confirmation shows a random event chosen in advance. Choosing it must use the same random
+    draws as before, so seeded simulations give the same results."""
+    import numpy as np
+    a, b = db.connect(tmp_path / "a.db"), db.connect(tmp_path / "b.db")
+    pick = events.pick_random_recall(a, np.random.default_rng(7))
+    res = events.random_recall(b, np.random.default_rng(7))
+    assert pick["lot_no"] == res["lot_no"]
+    assert tuple(b.execute("SELECT recall_class, reason FROM recalls").fetchone()) == (pick["recall_class"], pick["reason"])
+    assert a.execute("SELECT COUNT(*) FROM recalls").fetchone()[0] == 0          # picking changes nothing
+    o_pick = events.pick_random_outage(a, np.random.default_rng(11))
+    o_res = events.random_outage(b, np.random.default_rng(11))
+    assert (o_pick["supplier"], o_pick["days"]) == (o_res["supplier"], o_res["days"])
+    assert a.execute("SELECT COUNT(*) FROM vendor_outages").fetchone()[0] == 0
+    a.close(); b.close()
+
+
+def test_recall_preview_matches_what_the_recall_removes(conn):
+    lot = conn.execute("SELECT lot_no FROM lots WHERE qty > 0 ORDER BY lot_id LIMIT 1").fetchone()[0]
+    pv = events.recall_preview(conn, lot)
+    res = events.recall_lot(conn, lot, "II", "test")
+    assert pv["qty"] == res["removed"] and abs(pv["value"] - res["value"]) < 1e-9
+    assert pv["item_id"] == res["item_id"]

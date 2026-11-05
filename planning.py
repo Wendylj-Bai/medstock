@@ -158,7 +158,7 @@ def build_plan(items, usage, deliveries, lookback_days=90, service_levels=None,
         target = rop["rop"] + q - r.position if status.startswith("🔴") else 0
         order_cap = math.floor(r.d * r.shelf_life_days * 0.8)
         order_qty = int(min(max(target, 0), order_cap))
-        order_capped = status.startswith("🔴") and order_qty < target
+        order_capped = status.startswith("🔴") and order_cap < target      # the shelf-life cap, not rounding, cut it
 
         cost = im.total_annual_cost(q, r.D, r.ordering_cost, r.H, r.unit_cost, rop["safety_stock"]) if q > 0 else None
         rows.append({

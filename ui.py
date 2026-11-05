@@ -56,6 +56,7 @@ ICONS = {
     "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     "sparkles": '<path d="M9.94 14.06 7.5 21l-2.44-6.94L-1.88 11.62 5.06 9.18 7.5 2.24l2.44 6.94 6.94 2.44z" transform="translate(4.5 0) scale(.85)"/><path d="M19 3v4"/><path d="M21 5h-4"/><path d="M18 15v3"/><path d="M19.5 16.5h-3"/>',
     "list": '<path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/>',
+    "bell": '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     "logout": '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><path d="M21 12H9"/>',
 }
 
@@ -93,6 +94,7 @@ def img(name, color=COLORS["violet"], size=22, cls="ms-ico"):
 PAGES = [
     ("Dashboard", "dashboard", "violet"),
     ("Inventory", "list", "blue"),
+    ("Ask MedStock", "sparkles", "violet"),
     ("KPIs", "gauge", "blue"),
     ("Purchasing", "cart", "green"),
     ("Stock movements", "swap", "blue"),
@@ -116,6 +118,17 @@ MORE_PAGES = [t for t, _, _ in PAGES if t not in MAIN_PAGES]
 
 def nav_label(title):
     return NAV_LABELS.get(title, title)
+
+
+def page_slug(title):
+    """The page's name in the address bar: 'Recalls & disruptions' -> 'alerts', 'Item detail' -> 'item-detail'."""
+    label = nav_label(title).lower()
+    return "".join(ch if ch.isalnum() else "-" for ch in label).strip("-").replace("--", "-")
+
+
+def page_from_slug(slug):
+    """The page title for an address-bar name, or None if there is no such page."""
+    return next((t for t, _, _ in PAGES if page_slug(t) == (slug or "").strip().lower()), None)
 
 
 def nav_key(title):
@@ -223,6 +236,10 @@ APP_CSS = """
 .ms-step span{font-size:.8rem;color:#9A9EB8;margin-top:.45rem;line-height:1.25;}
 .ms-step.done span{color:#4A4F6A;}
 .ms-step.now span{color:#1B1F3B;font-weight:650;}
+/* confirmation dialog: the destructive Confirm button is red; the safe one stays violet */
+.st-key-confirm_danger button{background:#C2413A !important;border-color:#C2413A !important;color:#fff !important;}
+.st-key-confirm_danger button:hover{background:#A8342E !important;border-color:#A8342E !important;}
+.st-key-confirm_danger button:disabled{background:#E9B7B3 !important;border-color:#E9B7B3 !important;}
 .ms-cancel{display:inline-block;background:#FDECEB;color:#C2413A;border-radius:999px;padding:.25rem .8rem;font-weight:600;font-size:.85rem;}
 """
 
@@ -271,3 +288,151 @@ def section(title, question, icon_name, color):
     """A section header with an icon tile: title on top, the question it answers below in gray."""
     return (f'<div class="ms-sh"><img src="{tile_uri(icon_name, color)}" alt=""><div><b>{title}</b>'
             f'<span>{question}</span></div></div>')
+
+
+# ---------------------------------------------------------------------------
+# Status labels: one wording, color and icon for each state, used on every page.
+# The planning code still produces labels such as "🔴 Order now"; these helpers only change how they
+# are shown, never how they are calculated.
+# ---------------------------------------------------------------------------
+STATUS = {                        # label: (badge color, Material icon)
+    "No usable stock": ("red", "block"),
+    "Shortage risk": ("red", "error"),
+    "Order now": ("red", "shopping_cart"),
+    "Shortage watch": ("orange", "visibility"),
+    "Order soon": ("orange", "schedule"),
+    "Enough stock": ("green", "check_circle"),
+    "OK": ("green", "check_circle"),
+    "Expired": ("red", "event_busy"),
+    "Expiring soon": ("orange", "hourglass_bottom"),
+    "Active": ("red", "error"),
+    "Planned": ("orange", "schedule"),
+    "Ended": ("gray", "check_circle"),
+    "Late": ("red", "schedule"),
+}
+# Primary status on the Inventory page: the more urgent of an item's two statuses, in this order.
+PRIMARY_ORDER = ["No usable stock", "Shortage risk", "Order now", "Shortage watch", "Order soon", "OK"]
+BADGE_CSS = {"red": ("#FDECEB", "#B42318"), "orange": ("#FDF3E1", "#8A5300"), "green": ("#E3F6F3", "#0B6B5F"),
+             "gray": ("#EFF0F5", "#4A4F6A"), "violet": ("#EEEAFF", "#5B3DF5"), "blue": ("#E6EFFE", "#1D4FBF")}
+
+
+def plain_status(label):
+    """'🔴 Shortage risk' -> 'Shortage risk' (text only; no meaning carried by color or emoji)."""
+    text = str(label).strip()
+    return text.split(" ", 1)[1] if text[:1] in "🔴🟡🟢⚪" and " " in text else text
+
+
+def primary_status(reorder_status, availability):
+    """The single status shown first for an item: the more urgent of reorder status and availability."""
+    found = [plain_status(reorder_status), plain_status(availability).replace("Enough stock", "OK")]
+    return min(found, key=lambda s: PRIMARY_ORDER.index(s) if s in PRIMARY_ORDER else len(PRIMARY_ORDER))
+
+
+def badge_md(label):
+    """A compact status badge for st.markdown: icon + text on a tinted background."""
+    text = plain_status(label)
+    color, icon = STATUS.get(text, ("gray", "info"))
+    return f":{color}-badge[:material/{icon}: {text}]"
+
+
+def status_style(label):
+    """Cell style for a status in a table (pandas Styler): tinted background, dark text, label kept."""
+    color = STATUS.get(plain_status(label), ("gray", ""))[0]
+    bg, fg = BADGE_CSS[color]
+    return f"background-color:{bg};color:{fg};font-weight:600"
+
+
+# ---------------------------------------------------------------------------
+# Display formatting. Values keep full precision in calculations and storage; these only format them.
+# ---------------------------------------------------------------------------
+MISSING = "—"
+
+
+def _missing(x):
+    try:
+        return x is None or x != x                      # None or NaN
+    except (TypeError, ValueError):
+        return False
+
+
+def fmt_int(x):
+    """Whole units: 1,234."""
+    return MISSING if _missing(x) else f"{round(float(x)):,}"
+
+
+def fmt_num(x, digits=1):
+    """A measured quantity such as days or units per day: 3.2."""
+    return MISSING if _missing(x) else f"{float(x):,.{digits}f}"
+
+
+def fmt_pct(x, digits=1, signed=False):
+    """A share (0.153) as a percentage: 15.3% (or +15.3% when signed)."""
+    return MISSING if _missing(x) else f"{float(x):{'+' if signed else ''}.{digits}%}"
+
+
+def fmt_money(x, cents=False):
+    """US dollars: $12,345, or $12,345.67 when cents matter."""
+    if _missing(x):
+        return MISSING
+    v = float(x)
+    return ("-" if v < 0 else "") + (f"${abs(v):,.2f}" if cents else f"${abs(v):,.0f}")
+
+
+def fmt_date(d):
+    """Nov 4, 2026."""
+    if _missing(d):
+        return MISSING
+    import pandas as pd
+    t = pd.Timestamp(d)
+    return f"{t:%b} {t.day}, {t.year}"
+
+
+def expiry_phrase(days_left):
+    """Days until expiry in words: 'Expired 9 days ago', 'Expires today', 'Expires in 12 days'."""
+    if _missing(days_left):
+        return MISSING
+    d = int(days_left)
+    if d < 0:
+        return f"Expired {-d} day{'s' if d != -1 else ''} ago"
+    if d == 0:
+        return "Expires today"
+    return f"Expires in {d} day{'s' if d != 1 else ''}"
+
+
+def md_safe(text):
+    """Escape dollar signs for st.markdown / st.caption / st.success, which would otherwise read the text
+    between two amounts ("$1,200 to $900") as a math formula."""
+    return str(text).replace("\\$", "$").replace("$", "\\$")
+
+
+def badge_text(count):
+    """The number on the notification badge: '' when there is nothing, '99+' above 99."""
+    count = int(count or 0)
+    return "" if count <= 0 else "99+" if count > 99 else str(count)
+
+
+def alerts_label(count):
+    """What a screen reader hears for the notification bell."""
+    count = int(count or 0)
+    return "Open alerts, none active" if count <= 0 else f"Open alerts, {badge_text(count)} active"
+
+
+def bell_css(count):
+    """The bell button: a line icon in a white tile, plus a red count badge only when count > 0. The button
+    text (alerts_label) stays available to screen readers but is visually hidden."""
+    css = (".st-key-bell_btn button{width:40px;height:40px;min-height:40px;padding:0;border-radius:12px;"
+           "background:#FFFFFF;border:1px solid #E7E4F5;position:relative;overflow:visible;}"
+           ".st-key-bell_btn button:hover{background:#F3F1FC;border-color:#D9D3F5;}"
+           ".st-key-bell_btn button:focus-visible{outline:2px solid #6D4AFF;outline-offset:2px;}"
+           ".st-key-bell_btn button p{position:absolute !important;width:1px;height:1px;margin:-1px;padding:0;"
+           "overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}"
+           f'.st-key-bell_btn button::before{{content:"";width:22px;height:22px;flex:none;background:url("{icon_uri("bell", COLORS["navy"], 2)}") '
+           "center/contain no-repeat;}"
+           ".st-key-menu_top{justify-content:space-between;align-items:center;padding-right:.2rem;}")
+    text = badge_text(count)
+    if text:
+        css += (f'.st-key-bell_btn button::after{{content:"{text}";position:absolute;top:-7px;right:-7px;'
+                "min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#D93B32;color:#FFFFFF;"
+                "font-size:.7rem;font-weight:700;line-height:16px;text-align:center;border:2px solid #FFFFFF;"
+                "box-sizing:border-box;}")
+    return css
