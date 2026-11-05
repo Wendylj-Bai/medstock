@@ -185,12 +185,35 @@ def open_inventory_view(quick):
     sync_view("Inventory", quick, "All")
 
 
+# The Purchasing stage cards. Each card's count and its filtered list use the same rule on the same
+# order list (pu.orders), so they cannot disagree. name -> (drill key, rule, singular, plural, phrase).
+# "Late" is pu.orders' own rule: sent, confirmed or shipped and past the promised date, so it overlaps
+# the With vendor and In transit cards on purpose.
+PO_FILTERS = {
+    "Drafts": ("drafts", lambda p: p["stage"] == "DRAFT", "draft", "drafts", "waiting for approval"),
+    "With vendor": ("vendor", lambda p: p["stage"].isin(["SENT", "CONFIRMED"]), "order", "orders",
+                    "with the vendor"),
+    "In transit": ("transit", lambda p: p["stage"] == "SHIPPED", "order", "orders", "in transit"),
+    "At the dock": ("dock", lambda p: p["stage"] == "ARRIVED", "order", "orders",
+                    "at the dock, waiting to be received"),
+    "Late": ("late", lambda p: p["late"].astype(bool), "late order", "late orders", "past the promised date"),
+}
+
+
+def po_filter_ids(po_list, name):
+    """Order numbers that match one stage card (empty when there are no orders)."""
+    if po_list.empty:
+        return []
+    return list(po_list.loc[PO_FILTERS[name][1](po_list), "order_no"])
+
+
 def set_po_stage(stage):
-    """Purchasing filter callback: stage "Drafts" lists only drafts (none opened), None lists all open orders."""
+    """Purchasing filter callback: a card name lists only those orders (none opened); None lists all open
+    orders. Only one card filter can be on, because they share this one piece of state."""
     st.session_state.update(po_stage=stage, goto_view=PO_VIEW)
     st.session_state.pop("po_pick", None)
     if stage:
-        st.session_state["po_pick"] = None                # let the user choose which draft to open
+        st.session_state["po_pick"] = None                # let the user choose which order to open
     sync_view("Purchasing", stage, None)
 
 
@@ -1680,7 +1703,6 @@ if PAGE == "Purchasing":
     page_header("Purchasing", "One purchase order (PO) per vendor, one line per item. MedStock fills in quantities "
                               "and prices; you review, approve and send. Vendors are fictional and respond as the "
                               "simulation clock moves.")
-    stage_counts = po_list["stage"].value_counts() if len(po_list) else pd.Series(dtype=int)
     m = [card_row("row_stage")] * 5                     # wraps on narrow screens instead of squeezing 5 across
     STAGE_HELP = {
         "Drafts to approve": "Prepared by you or MedStock but not approved. The vendor has not seen it, so it does "
@@ -1690,22 +1712,28 @@ if PAGE == "Purchasing":
         "In transit": "The vendor shipped it and sent a ship notice with lots and expiry dates.",
         "At the dock": "Delivered and waiting to be received into stock.",
         "Late": "Past the vendor's promised date and not yet received."}
-    draft_ids = set(po_list.loc[po_list["stage"] == "DRAFT", "order_no"]) if len(po_list) else set()
-    restore_view("Purchasing", ["Drafts"])             # ?view=drafts from the Drafts card or a reload
-    if st.session_state.get("open_order") not in (None, *draft_ids):   # a jump to a non-draft order
+    restore_view("Purchasing", list(PO_FILTERS))        # ?view=drafts, with-vendor, ... from a card or a reload
+    stage_ids = {name: po_filter_ids(po_list, name) for name in PO_FILTERS}
+    po_stage = st.session_state.get("po_stage")
+    if po_stage not in PO_FILTERS:
+        po_stage = None
+    goto_order = st.session_state.get("open_order")
+    if po_stage and goto_order and goto_order not in stage_ids[po_stage]:   # a jump to an order outside the filter
         set_po_stage(None)
-    drafts_on = st.session_state.get("po_stage") == "Drafts"
-    drafts_box = kpi(m[0], "Drafts", len(draft_ids), "edit", "violet", help=STAGE_HELP["Drafts to approve"])
-    drill_card(drafts_box, "drafts",
-               f"Drafts filter is on, showing {n(len(draft_ids), 'draft')}. Show all open orders" if drafts_on
-               else f"Show {n(len(draft_ids), 'draft')} waiting for approval",
-               "Filter on" if drafts_on else "Show drafts",
-               set_po_stage, (None if drafts_on else "Drafts",), active=drafts_on)
-    kpi(m[1], "With vendor", int(stage_counts.get("SENT", 0) + stage_counts.get("CONFIRMED", 0)), "send", "blue",
-        help=STAGE_HELP["With the vendor"])
-    kpi(m[2], "In transit", int(stage_counts.get("SHIPPED", 0)), "truck", "green", help=STAGE_HELP["In transit"])
-    kpi(m[3], "At the dock", int(stage_counts.get("ARRIVED", 0)), "box", "amber", help=STAGE_HELP["At the dock"])
-    kpi(m[4], "Late", int(po_list["late"].sum()) if len(po_list) else 0, "clock", "red", help=STAGE_HELP["Late"])
+        po_stage = None
+    CARD_LOOK = {"Drafts": ("edit", "violet", "Drafts to approve"), "With vendor": ("send", "blue", "With the vendor"),
+                 "In transit": ("truck", "green", "In transit"), "At the dock": ("box", "amber", "At the dock"),
+                 "Late": ("clock", "red", "Late")}
+    for col, (name, (dkey, _, one, many, phrase)) in zip(m, PO_FILTERS.items()):
+        icon, color, help_key = CARD_LOOK[name]
+        count = len(stage_ids[name])
+        box = kpi(col, name, count, icon, color, help=STAGE_HELP[help_key])
+        on = po_stage == name
+        drill_card(box, dkey,
+                   f"{name} filter is on, showing {n(count, one, many)}. Show all open orders" if on
+                   else f"Show {n(count, one, many)} {phrase}",
+                   "Filter on" if on else ("Show drafts" if name == "Drafts" else "Show orders"),
+                   set_po_stage, (None if on else name,), active=on)
     with st.expander("What the order stages mean", icon=":material/help:"):
         st.markdown("\n".join(f"- **{k}**: {v}" for k, v in STAGE_HELP.items()) +
                     "\n\nReview, approval and sending are separate steps: **Save changes** keeps a draft, **Review and "
@@ -1723,21 +1751,28 @@ if PAGE == "Purchasing":
 
     with buy_tabs[BUY_VIEWS.index(buy_view)]:
         if buy_view == "Purchase orders":
-            if po_list.empty:
+            if po_stage:                                     # set by a stage card; same order list and rule as its count
+                _, _, one, many, phrase = PO_FILTERS[po_stage]
+                pl = po_list[po_list["order_no"].isin(stage_ids[po_stage])] if len(po_list) else po_list
+                with st.container(horizontal=True, vertical_alignment="center", key="po_filter_bar"):
+                    st.markdown(f":violet-badge[:material/filter_alt: {po_stage} only] Showing "
+                                f"**{n(len(pl), one, many)}** {phrase}." +
+                                ("" if pl.empty else
+                                 " Choose one below to review it; nothing is approved or sent from this list."
+                                 if po_stage == "Drafts" else
+                                 " Choose one below to see it; nothing changes from this list."), width="stretch")
+                    st.button("All open orders", key="po_clear_stage", icon=":material/filter_alt_off:",
+                              on_click=set_po_stage, args=(None,))
+            if po_stage and pl.empty:
+                empty_state("po_filtered", f"No {many} {phrase}",
+                            "Nothing matches this card right now. Use All open orders above to see everything else.")
+            elif po_list.empty:
                 empty_state("po", "No purchase orders yet",
                             "Create one by hand, or prepare suggested orders (one draft per vendor) on the Dashboard.",
                             [("Review suggested orders", ":material/dashboard:", open_page, ("Dashboard",)),
                              ("Create purchase order", ":material/add_circle:", show_new_po, ())])
             else:
-                if drafts_on:                                # set by the Drafts card; same po_list as its count
-                    pl = po_list[po_list["stage"] == "DRAFT"]
-                    with st.container(horizontal=True, vertical_alignment="center", key="po_filter_bar"):
-                        st.markdown(f":violet-badge[:material/filter_alt: Drafts only] Showing "
-                                    f"**{n(len(pl), 'draft')}** waiting for approval. Choose one below to review "
-                                    "it; nothing is approved or sent from this list.", width="stretch")
-                        st.button("All open orders", key="po_clear_stage", icon=":material/filter_alt_off:",
-                                  on_click=set_po_stage, args=(None,))
-                else:
+                if not po_stage:
                     open_only = st.toggle("Open orders only", value=True)
                     pl = po_list[~po_list["stage"].isin(["RECEIVED", "CANCELLED"])] if open_only else po_list
                 pl = pl.assign(
@@ -1751,7 +1786,7 @@ if PAGE == "Purchasing":
                     "eta": st.column_config.TextColumn("Due", help="Vendor's promised date; the carrier's ETA once shipped"),
                     "late": st.column_config.CheckboxColumn("Late?")})
                 if pl.empty:
-                    st.success("No drafts waiting for approval." if drafts_on else "No open orders.")
+                    st.success("No open orders.")
                 else:
                     # drafts waiting for approval first, then the rest (newest first)
                     ids = list(pl.assign(_d=pl["stage"] != "DRAFT").sort_values(["_d", "order_no"],
@@ -1761,10 +1796,12 @@ if PAGE == "Purchasing":
                     if goto in ids:
                         st.session_state["po_pick"] = goto
                     elif st.session_state.get("po_pick") not in ids:
-                        st.session_state["po_pick"] = None if drafts_on else ids[0]   # drafts list: user picks
-                    order_no = st.selectbox("Open a draft" if drafts_on else "Open a purchase order", ids,
-                                            key="po_pick", index=None if drafts_on else 0,
-                                            placeholder="Choose a draft to review",
+                        st.session_state["po_pick"] = None if po_stage else ids[0]   # filtered list: user picks
+                    noun = "draft" if po_stage == "Drafts" else "order"
+                    order_no = st.selectbox(f"Open {'a draft' if noun == 'draft' else 'an order'}" if po_stage
+                                            else "Open a purchase order", ids,
+                                            key="po_pick", index=None if po_stage else 0,
+                                            placeholder=f"Choose a{'n' if noun == 'order' else ''} {noun} to review",
                                             format_func=lambda o: f"{o} · {label.at[o, 'supplier']} · "
                                                                   f"{label.at[o, 'status']}")
                     drafts_left = [o for o in ids if label.at[o, "stage"] == "DRAFT" and o != order_no]
@@ -1773,7 +1810,9 @@ if PAGE == "Purchasing":
                                    ", ".join(f"{o} ({label.at[o, 'supplier']})" for o in drafts_left))
                     if order_no is None:
                         st.info("Choose a draft above to review its lines, quantities and vendor. Approving "
-                                "and sending stay separate steps on the draft itself.", icon=":material/touch_app:")
+                                "and sending stay separate steps on the draft itself." if po_stage == "Drafts" else
+                                "Choose an order above to see its lines, vendor messages and stage timeline.",
+                                icon=":material/touch_app:")
                     else:
                         h = pu.order_header(conn, order_no)
                         current = pu.stage(h, TODAY)

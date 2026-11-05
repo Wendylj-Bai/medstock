@@ -250,7 +250,7 @@ APP_CSS = """
 [class*="st-key-kpi_"]:has([class*="st-key-drill_"] button:active) [data-testid="stMetric"]{
   transform:translateY(1px);background:#F7F5FF;}
 [class*="st-key-kpi_"]:has([class*="st-key-drill_on_"]) [data-testid="stMetric"]{
-  border:2px solid #7C5CFF;background:#F5F2FF;}
+  border-color:#7C5CFF;box-shadow:0 0 0 1px #7C5CFF, 0 6px 18px rgba(91,61,245,.12);background:#F5F2FF;}
 [class*="st-key-drill_on_"] button::after{background:#5B3DF5;color:#FFFFFF;}
 [class*="st-key-kpi_"]:has([class*="st-key-drill_"]) [data-testid="stMetricLabel"] [data-testid="stTooltipHoverTarget"]{
   position:relative;z-index:2;}

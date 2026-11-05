@@ -933,3 +933,189 @@ def test_drafts_card_with_no_drafts_shows_an_empty_list(app):
     at.button(key="drill_drafts").click().run()
     assert not at.exception
     assert at.button(key="drill_on_drafts").label.startswith("Drafts filter is on, showing 0 drafts")
+
+
+# ---------------------------------------------------------------------------
+# Purchasing stage cards (Interaction Packet 2A): every card filters the order list
+# ---------------------------------------------------------------------------
+CARD_KEYS = {"Drafts": "drafts", "With vendor": "vendor", "In transit": "transit", "At the dock": "dock",
+             "Late": "late"}
+CARD_SLUGS = {"Drafts": "drafts", "With vendor": "with-vendor", "In transit": "in-transit",
+              "At the dock": "at-the-dock", "Late": "late"}
+
+
+def mixed_stage_orders(conn):
+    """One order in every stage (temporary database only), placed by setting the vendor's dates around
+    today. Returns {name: order_no}. Late ones: sent_late, confirmed_late and shipped_late."""
+    import purchasing as pu
+    today = db.today(conn)
+    vendor = next(iter(pu.VENDORS))
+    item = conn.execute("SELECT item_id FROM items WHERE supplier = ? LIMIT 1", (vendor,)).fetchone()[0]
+    d = lambda k: (today + timedelta(days=k)).isoformat()
+    #             ack  ship arrive promised
+    plan = {"draft": None,
+            "sent": (3, 5, 8, 6), "sent_late": (1, 5, 8, -1),
+            "confirmed": (-1, 3, 6, 4), "confirmed_late": (-5, 2, 5, -1),
+            "shipped_late": (-6, -2, 2, -1), "arrived": (-8, -4, -1, -2)}
+    made = {}
+    for name, dates in plan.items():
+        o = pu.create_order(conn, vendor, [(item, 5)], origin="Test")
+        if dates:
+            pu.send_order(conn, o)
+            with conn:
+                conn.execute("UPDATE po_headers SET ack_date = ?, ship_date = ?, arrive_date = ?, promised_date = ?, "
+                             "vendor_note = NULL WHERE order_no = ?", (*map(d, dates), o))
+        made[name] = o
+    return made
+
+
+EXPECTED = {"Drafts": {"draft"}, "With vendor": {"sent", "sent_late", "confirmed", "confirmed_late"},
+            "In transit": {"shipped_late"}, "At the dock": {"arrived"},
+            "Late": {"sent_late", "confirmed_late", "shipped_late"}}
+
+
+def stage_rule_ids(conn, name):
+    """The card's rule applied straight to purchasing.orders, independent of the app."""
+    import purchasing as pu
+    p = pu.orders(conn, db.today(conn))
+    rule = {"Drafts": p["stage"] == "DRAFT", "With vendor": p["stage"].isin(["SENT", "CONFIRMED"]),
+            "In transit": p["stage"] == "SHIPPED", "At the dock": p["stage"] == "ARRIVED", "Late": p["late"]}[name]
+    return set(p.loc[rule, "order_no"])
+
+
+def test_every_stage_card_lists_exactly_its_orders(app):
+    at, conn = app
+    made = mixed_stage_orders(conn)
+    open_page(at, "Purchasing")
+    for name, key in CARD_KEYS.items():
+        count = metric_value(at, name)
+        at.button(key=f"drill_{key}").click().run()
+        assert not at.exception, name
+        rows = set(po_table(at)["order_no"]) if count else set()
+        assert rows == stage_rule_ids(conn, name), name                  # same rule as purchasing.orders
+        assert {made[k] for k in EXPECTED[name]} <= rows, name           # the right stage for each test order
+        assert not ({made[k] for k in set(made) - EXPECTED[name]} & rows), name
+        assert count == len(rows), name                                  # card count = filtered rows
+        assert at.button(key=f"drill_on_{key}").label.startswith(f"{name} filter is on, showing {count} ")
+        assert at.query_params["view"] == CARD_SLUGS[name]
+        if count:
+            pick = at.selectbox(key="po_pick")
+            assert pick.value is None                                    # nothing opened for the user
+            assert pick.label == ("Open a draft" if name == "Drafts" else "Open an order")
+        at.button(key=f"drill_on_{key}").click().run()                   # active card again: filter off
+        assert "view" not in at.query_params and at.session_state.get("po_stage") is None
+
+
+def test_late_overlaps_sent_confirmed_and_shipped(app):
+    at, conn = app
+    made = mixed_stage_orders(conn)
+    open_page(at, "Purchasing")
+    at.button(key="drill_late").click().run()
+    statuses = dict(zip(po_table(at)["order_no"], po_table(at)["status"]))
+    assert {statuses[made[k]] for k in ("sent_late", "confirmed_late", "shipped_late")} == {
+        "Sent to vendor", "Confirmed by vendor", "Shipped"}
+    assert made["arrived"] not in statuses and made["sent"] not in statuses
+
+
+def test_only_one_stage_card_is_active_and_all_open_orders_clears_it(app):
+    at, conn = app
+    mixed_stage_orders(conn)
+    open_page(at, "Purchasing")
+    all_open = sorted(po_table(at)["order_no"])
+    at.button(key="drill_vendor").click().run()
+    at.button(key="drill_transit").click().run()                         # switching cards replaces the filter
+    actives = [b.key for b in at.button if b.key and b.key.startswith("drill_on_")]
+    assert actives == ["drill_on_transit"]
+    assert at.query_params["view"] == "in-transit"
+    at.button(key="po_clear_stage").click().run()
+    assert sorted(po_table(at)["order_no"]) == all_open
+    assert not [b.key for b in at.button if b.key and b.key.startswith("drill_on_")]
+
+
+def test_stage_card_with_no_orders_shows_a_filtered_empty_state(app):
+    at, conn = app
+    open_page(at, "Purchasing")
+    for name, key in CARD_KEYS.items():
+        if metric_value(at, name) == 0:
+            at.button(key=f"drill_{key}").click().run()
+            assert not at.exception
+            assert at.session_state["po_stage"] == name                  # stays filtered, not all orders
+            assert any(m.value.startswith("**No ") for m in at.main.markdown)   # the filtered empty state
+            assert not any("order_no" in d.value.columns for d in at.main.dataframe)
+            bar = next(m.value for m in at.main.markdown if "only] Showing" in m.value)
+            assert "Choose one" not in bar                               # no prompt to pick from an empty list
+            at.button(key="po_clear_stage").click().run()
+            assert at.session_state.get("po_stage") is None
+            return
+    pytest.skip("every stage card has orders in the sample data")
+
+
+def test_stage_view_is_restored_from_the_address(app):
+    at, conn = app
+    made = mixed_stage_orders(conn)
+    for name, slug in CARD_SLUGS.items():
+        at.query_params["page"] = "purchasing"
+        at.query_params["view"] = slug
+        at.session_state["linked_view"] = None                           # as in a new session after sign-in
+        at.run()
+        assert not at.exception, name
+        assert at.session_state["po_stage"] == name
+        assert at.button(key=f"drill_on_{CARD_KEYS[name]}")
+    assert len(set(CARD_SLUGS.values())) == len(CARD_SLUGS)              # distinct slugs
+
+
+def test_selecting_a_filtered_order_shows_its_details_and_timeline(app):
+    import purchasing as pu
+    at, conn = app
+    made = mixed_stage_orders(conn)
+    open_page(at, "Purchasing")
+    at.button(key="drill_transit").click().run()
+    at.selectbox(key="po_pick").set_value(made["shipped_late"]).run()
+    assert not at.exception
+    html = " ".join(e.proto.body for e in at.get("html"))
+    assert "Shipped" in html and "Received" in html                       # the stage timeline
+    assert any("Vendor messages" in m.value for m in at.main.markdown)
+    assert pu.order_header(conn, made["shipped_late"])["status"] == "SENT"   # nothing changed
+
+
+def test_jumping_to_an_order_outside_the_filter_clears_it(app):
+    at, conn = app
+    made = mixed_stage_orders(conn)
+    open_page(at, "Purchasing")
+    at.button(key="drill_dock").click().run()
+    at.session_state["open_order"] = made["draft"]                      # e.g. "Review drafts in Purchasing"
+    at.run()
+    assert not at.exception
+    assert at.session_state.get("po_stage") is None and "view" not in at.query_params
+    assert at.selectbox(key="po_pick").value == made["draft"]
+    at.button(key="drill_vendor").click().run()                          # a jump inside the filter keeps it
+    at.session_state["open_order"] = made["confirmed"]
+    at.run()
+    assert at.session_state["po_stage"] == "With vendor"
+    assert at.selectbox(key="po_pick").value == made["confirmed"]
+
+
+def test_clicking_every_stage_card_writes_nothing(app):
+    at, conn = app
+    mixed_stage_orders(conn)
+    open_page(at, "Purchasing")
+    before = db_fingerprint(conn)
+    for key in CARD_KEYS.values():
+        at.button(key=f"drill_{key}").click().run()
+        at.button(key=f"drill_on_{key}").click().run()
+    at.button(key="drill_dock").click().run()
+    at.button(key="po_clear_stage").click().run()
+    assert not at.exception
+    assert db_fingerprint(conn) == before                                # nothing created, sent, received or edited
+
+
+def test_stage_cards_are_buttons_with_counts_in_their_labels(app):
+    at, conn = app
+    mixed_stage_orders(conn)
+    open_page(at, "Purchasing")
+    expected = {"Drafts": "waiting for approval", "With vendor": "with the vendor", "In transit": "in transit",
+                "At the dock": "at the dock, waiting to be received", "Late": "past the promised date"}
+    for name, key in CARD_KEYS.items():
+        label = at.button(key=f"drill_{key}").label                      # a real button: Tab and Enter work
+        count = metric_value(at, name)
+        assert label.startswith(f"Show {count} ") and label.endswith(expected[name]), label

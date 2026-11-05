@@ -256,6 +256,24 @@ MedStock records the real delivery time, which makes future reorder points more 
 
 > A delivery that is already expired is rejected. Do not accept it; return it to the vendor.
 
+### 6.2b The order stage cards
+The five cards at the top of **Purchasing** filter the **Purchase orders** list. Click one (or Tab to it
+and press Enter) to list only its orders; click it again, or press **All open orders**, to see everything.
+
+| Card | Lists |
+|---|---|
+| **Drafts** | Drafts waiting for your approval |
+| **With vendor** | Sent and confirmed orders |
+| **In transit** | Shipped orders |
+| **At the dock** | Delivered orders waiting to be received |
+| **Late** | Sent, confirmed or shipped orders past the vendor's promised date. A late order also appears under With vendor or In transit. |
+
+Only one card filter is on at a time, and the card shows **Filter on**. No order opens by itself:
+choose one from **Open an order** to see its lines, timeline and vendor messages. A card with 0 shows
+an empty list rather than all orders. The address bar keeps the filter (for example
+`?page=purchasing&view=late`), so a reload returns to it after you sign in. Filtering never changes an
+order.
+
 ### 6.3 Review, approve and send a purchase order
 1. 🛒 **Purchasing** > **📄 Purchase orders** > choose the PO (drafts say *📝 Draft*). To see only the
    drafts, click the **Drafts** card at the top: the list shows just the drafts and none is opened until

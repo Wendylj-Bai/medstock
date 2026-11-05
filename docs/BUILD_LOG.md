@@ -378,3 +378,21 @@ list again by hand, and the Purchasing cards were cut off on a tablet with the m
 the order list), and the address carries it as `?view=`, so a reload returns to the same view after
 sign-in. The count and the rows come from the same data. The remaining Purchasing cards and an
 ordering step from Inventory are left for the next packet.
+
+## 22. Every Purchasing card is a filter
+
+**Date:** November 5, 2026
+
+**Built:** The With vendor, In transit, At the dock and Late cards now filter the Purchase orders list
+the same way Drafts does. One table in app.py (`PO_FILTERS`) holds each card's rule, labels and address
+slug, and both the card count and the filtered list come from it, so they cannot disagree. One card
+is active at a time; clicking it again or pressing **All open orders** clears it. A card with 0 shows
+an empty list, not all orders, and no order opens until you choose one. Jumping straight to an order
+that the active card does not include turns the filter off.
+
+**Problem:** The stage cards showed numbers but led nowhere. A late order also needed to show up
+where people expect it: "Late" is about the promised date, not a separate stage.
+
+**Decision:** Late keeps MedStock's existing rule (sent, confirmed or shipped and past the promised
+date), so it overlaps With vendor and In transit on purpose; the tests check that overlap. The
+active card's ring no longer changes its size, so all five cards stay the same height.
