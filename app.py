@@ -92,7 +92,9 @@ def kpi(col, label, value, icon, color, missing=None, **kw):
         MUTED_KPIS.add(key)
         value, kw = ui.MISSING, {**kw, "delta": "Not enough data yet", "delta_color": "off", "delta_arrow": "off",
                                  "help": (kw.get("help", "") + " " if kw.get("help") else "") + missing}
-    col.container(key=key).metric(label, value, **kw)
+    box = col.container(key=key)
+    box.metric(label, value, **kw)
+    return box
 
 
 PO_VIEW = "Purchase orders"
@@ -139,6 +141,68 @@ def open_page(page):
     st.session_state["page"] = page
     st.session_state["linked_slug"] = ui.page_slug(page)
     st.query_params["page"] = ui.page_slug(page)
+    if "view" in st.query_params:                        # a filtered view belongs to the page it was set on
+        del st.query_params["view"]
+
+
+# Drill-down cards: a summary card that opens a page with one of that page's own filters applied. The
+# filter is the page's existing state (VIEW_STATE), and the address carries it as ?view=, so a reload
+# returns to the same filtered view after sign-in. Opening a view only changes session state and the
+# address; it never writes to the database.
+VIEW_STATE = {"Inventory": "inv_quick", "Purchasing": "po_stage"}
+INV_FILTER_DEFAULTS = {"inv_search": "", "inv_quick": "All", "dash_status": [], "dash_risk": [], "dash_ved": []}
+
+
+def view_slug(value):
+    return re.sub(r"\W+", "-", str(value).lower()).strip("-")
+
+
+def sync_view(page, value, default):
+    """Keep ?view= in step with the page's filter (removed when the filter is back to its default)."""
+    slug = None if value in (None, default) else view_slug(value)
+    if slug and st.query_params.get("view") != slug:
+        st.query_params["view"] = slug
+    elif not slug and "view" in st.query_params:
+        del st.query_params["view"]
+    st.session_state["linked_view"] = (page, slug)
+
+
+def restore_view(page, options):
+    """Apply ?view= once when the address is new (a reload or a pasted link); the page's own control
+    keeps the filter after that."""
+    slug = st.query_params.get("view")
+    if slug and st.session_state.get("linked_view") != (page, slug):
+        match = next((o for o in options if view_slug(o) == slug), None)
+        if match is not None:
+            st.session_state[VIEW_STATE[page]] = match
+        st.session_state["linked_view"] = (page, slug)
+
+
+def open_inventory_view(quick):
+    """Card callback: Inventory with one quick view and no other filters, so the rows match the card."""
+    open_page("Inventory")
+    st.session_state.update(INV_FILTER_DEFAULTS, inv_quick=quick, inv_page=1)
+    sync_view("Inventory", quick, "All")
+
+
+def set_po_stage(stage):
+    """Purchasing filter callback: stage "Drafts" lists only drafts (none opened), None lists all open orders."""
+    st.session_state.update(po_stage=stage, goto_view=PO_VIEW)
+    st.session_state.pop("po_pick", None)
+    if stage:
+        st.session_state["po_pick"] = None                # let the user choose which draft to open
+    sync_view("Purchasing", stage, None)
+
+
+DRILL_CUES = {}         # drill button key -> visible cue on the card; drawn at the end of the run
+
+
+def drill_card(box, key, label, cue, on_click, args=(), active=False):
+    """Make a KPI card (the container returned by kpi()) one big button. `label` is the accessible name
+    (it includes the count); `cue` is the short visible hint in the card's corner. Styles in ui.APP_CSS."""
+    key = f"drill_on_{key}" if active else f"drill_{key}"
+    DRILL_CUES[key] = cue
+    box.button(label, key=key, on_click=on_click, args=args)
 
 
 menu_top = st.sidebar.container(horizontal=True, key="menu_top")   # "Menu" label + notification bell
@@ -157,6 +221,8 @@ PAGE = st.session_state["page"]
 if st.query_params.get("page") != ui.page_slug(PAGE):     # keep the address in step with the open page
     st.query_params["page"] = ui.page_slug(PAGE)
     st.session_state["linked_slug"] = ui.page_slug(PAGE)
+    if "view" in st.query_params:
+        del st.query_params["view"]
 
 # Planning settings: the simulation clock and every policy knob, collapsed so the menu stays short.
 # (Streamlit cannot nest expanders, so the former "Simulation settings" and "Smoothing constants"
@@ -578,9 +644,12 @@ if PAGE == "Dashboard":
     c1 = c2 = c3 = c4 = card_row("row_kpi")
     st.html("<style>" + ui.kpi_css({"kpi_now": ("cart", "red"), "kpi_vital": ("heart", "violet"),
                                     "kpi_fill": ("gauge", "green"), "kpi_value": ("dollar", "blue")}) + "</style>")
-    c1.container(key="kpi_now").metric(
+    now_box = c1.container(key="kpi_now")
+    now_box.metric(
         "Order now", f"{len(red):,}", delta=f"{len(yellow):,} more due soon", delta_color="off", delta_arrow="off",
         help="Items at or below their reorder point (usable stock plus stock on order).")
+    drill_card(now_box, "now", f"View {n(len(red), 'item')} to order now", "View list",
+               open_inventory_view, ("Order now",))
     c2.container(key="kpi_vital").metric(
         "Vital items at risk", f"{len(vital_at_risk):,}", delta=f"{vital_empty:,} with no usable stock",
         delta_color="off", delta_arrow="off",
@@ -848,19 +917,20 @@ if PAGE == "Inventory":
                   "Shortage risk": "Usable stock runs out within 7 days (or a Vital item has none)",
                   "Incoming": "An order for the item is on its way",
                   "Expiring": "A lot on the shelf has expired or expires within 30 days"}
-    FILTER_KEYS = {"inv_search": "", "inv_quick": "All", "dash_status": [], "dash_risk": [], "dash_ved": [],
-                   "dash_sort": list(SORTS)[0]}
+    FILTER_KEYS = {**INV_FILTER_DEFAULTS, "dash_sort": list(SORTS)[0]}
 
     def clear_filters():
         for k, v in FILTER_KEYS.items():
             st.session_state[k] = v
 
+    restore_view("Inventory", list(QUICK))             # ?view=order-now from a Dashboard card or a reload
+    st.session_state.setdefault("inv_quick", "All")
     with st.container(border=True, key="toolbar_inventory"):
         t1, t2 = st.columns([2, 3], vertical_alignment="top")
         search = t1.text_input("Search", key="inv_search", placeholder="Item name or ID, e.g. insulin or MED007",
                                icon=":material/search:")
         quick = t2.segmented_control(
-            "Quick view", list(QUICK), key="inv_quick", default="All", required=True, wrap=True,
+            "Quick view", list(QUICK), key="inv_quick", required=True, wrap=True,
             format_func=lambda q: f"{q} ({int(QUICK[q].sum())})",
             help="  \n".join(f"**{k}**: {v}" for k, v in QUICK_HELP.items()))
         with st.expander("More filters and columns", icon=":material/tune:"):
@@ -880,6 +950,7 @@ if PAGE == "Inventory":
             extra_cols = st.multiselect("Extra columns", list(EXTRA), format_func=EXTRA.get, key="inv_cols",
                                         placeholder="Add calculation columns")
 
+    sync_view("Inventory", quick, "All")
     view = base.assign(status_rank=base["status"].map({s: i for i, s in enumerate(STATUSES)}),
                        status_rank_desc=-base["status"].map({s: i for i, s in enumerate(STATUSES)}),
                        risk_rank=base["availability_risk"].map({s: i for i, s in enumerate(RISKS)}).fillna(9),
@@ -1610,7 +1681,7 @@ if PAGE == "Purchasing":
                               "and prices; you review, approve and send. Vendors are fictional and respond as the "
                               "simulation clock moves.")
     stage_counts = po_list["stage"].value_counts() if len(po_list) else pd.Series(dtype=int)
-    m = st.columns(5)
+    m = [card_row("row_stage")] * 5                     # wraps on narrow screens instead of squeezing 5 across
     STAGE_HELP = {
         "Drafts to approve": "Prepared by you or MedStock but not approved. The vendor has not seen it, so it does "
                              "not count as on order.",
@@ -1619,8 +1690,17 @@ if PAGE == "Purchasing":
         "In transit": "The vendor shipped it and sent a ship notice with lots and expiry dates.",
         "At the dock": "Delivered and waiting to be received into stock.",
         "Late": "Past the vendor's promised date and not yet received."}
-    kpi(m[0], "Drafts", int(stage_counts.get("DRAFT", 0)), "edit", "violet",
-        help=STAGE_HELP["Drafts to approve"])
+    draft_ids = set(po_list.loc[po_list["stage"] == "DRAFT", "order_no"]) if len(po_list) else set()
+    restore_view("Purchasing", ["Drafts"])             # ?view=drafts from the Drafts card or a reload
+    if st.session_state.get("open_order") not in (None, *draft_ids):   # a jump to a non-draft order
+        set_po_stage(None)
+    drafts_on = st.session_state.get("po_stage") == "Drafts"
+    drafts_box = kpi(m[0], "Drafts", len(draft_ids), "edit", "violet", help=STAGE_HELP["Drafts to approve"])
+    drill_card(drafts_box, "drafts",
+               f"Drafts filter is on, showing {n(len(draft_ids), 'draft')}. Show all open orders" if drafts_on
+               else f"Show {n(len(draft_ids), 'draft')} waiting for approval",
+               "Filter on" if drafts_on else "Show drafts",
+               set_po_stage, (None if drafts_on else "Drafts",), active=drafts_on)
     kpi(m[1], "With vendor", int(stage_counts.get("SENT", 0) + stage_counts.get("CONFIRMED", 0)), "send", "blue",
         help=STAGE_HELP["With the vendor"])
     kpi(m[2], "In transit", int(stage_counts.get("SHIPPED", 0)), "truck", "green", help=STAGE_HELP["In transit"])
@@ -1649,8 +1729,17 @@ if PAGE == "Purchasing":
                             [("Review suggested orders", ":material/dashboard:", open_page, ("Dashboard",)),
                              ("Create purchase order", ":material/add_circle:", show_new_po, ())])
             else:
-                open_only = st.toggle("Open orders only", value=True)
-                pl = po_list[~po_list["stage"].isin(["RECEIVED", "CANCELLED"])] if open_only else po_list
+                if drafts_on:                                # set by the Drafts card; same po_list as its count
+                    pl = po_list[po_list["stage"] == "DRAFT"]
+                    with st.container(horizontal=True, vertical_alignment="center", key="po_filter_bar"):
+                        st.markdown(f":violet-badge[:material/filter_alt: Drafts only] Showing "
+                                    f"**{n(len(pl), 'draft')}** waiting for approval. Choose one below to review "
+                                    "it; nothing is approved or sent from this list.", width="stretch")
+                        st.button("All open orders", key="po_clear_stage", icon=":material/filter_alt_off:",
+                                  on_click=set_po_stage, args=(None,))
+                else:
+                    open_only = st.toggle("Open orders only", value=True)
+                    pl = po_list[~po_list["stage"].isin(["RECEIVED", "CANCELLED"])] if open_only else po_list
                 pl = pl.assign(
                     status=pl["stage"].map(pu.STAGE_LABELS),
                     eta=np.where(pl["stage"].isin(["SHIPPED", "ARRIVED", "RECEIVED"]), pl["arrive_date"], pl["promised_date"]))
@@ -1662,7 +1751,7 @@ if PAGE == "Purchasing":
                     "eta": st.column_config.TextColumn("Due", help="Vendor's promised date; the carrier's ETA once shipped"),
                     "late": st.column_config.CheckboxColumn("Late?")})
                 if pl.empty:
-                    st.success("No open orders.")
+                    st.success("No drafts waiting for approval." if drafts_on else "No open orders.")
                 else:
                     # drafts waiting for approval first, then the rest (newest first)
                     ids = list(pl.assign(_d=pl["stage"] != "DRAFT").sort_values(["_d", "order_no"],
@@ -1672,115 +1761,121 @@ if PAGE == "Purchasing":
                     if goto in ids:
                         st.session_state["po_pick"] = goto
                     elif st.session_state.get("po_pick") not in ids:
-                        st.session_state["po_pick"] = ids[0]
-                    order_no = st.selectbox("Open a purchase order", ids, key="po_pick",
+                        st.session_state["po_pick"] = None if drafts_on else ids[0]   # drafts list: user picks
+                    order_no = st.selectbox("Open a draft" if drafts_on else "Open a purchase order", ids,
+                                            key="po_pick", index=None if drafts_on else 0,
+                                            placeholder="Choose a draft to review",
                                             format_func=lambda o: f"{o} · {label.at[o, 'supplier']} · "
                                                                   f"{label.at[o, 'status']}")
                     drafts_left = [o for o in ids if label.at[o, "stage"] == "DRAFT" and o != order_no]
-                    if drafts_left:
+                    if drafts_left and order_no is not None:
                         st.caption(f"{n(len(drafts_left), 'more draft')} waiting for approval: " +
                                    ", ".join(f"{o} ({label.at[o, 'supplier']})" for o in drafts_left))
-                    h = pu.order_header(conn, order_no)
-                    current = pu.stage(h, TODAY)
-                    lines = pu.order_lines(conn, order_no)
-                    st.html(stage_bar(current))
+                    if order_no is None:
+                        st.info("Choose a draft above to review its lines, quantities and vendor. Approving "
+                                "and sending stay separate steps on the draft itself.", icon=":material/touch_app:")
+                    else:
+                        h = pu.order_header(conn, order_no)
+                        current = pu.stage(h, TODAY)
+                        lines = pu.order_lines(conn, order_no)
+                        st.html(stage_bar(current))
 
-                    with st.container(border=True):
-                        a, b = st.columns(2)
-                        a.markdown("**Vendor**  \n" + vendor_card(h["supplier"]))
-                        b.markdown(f"**Ship to**  \n{pu.HOSPITAL['name']}  \n{pu.HOSPITAL['dept']}  \n{pu.HOSPITAL['address']}")
-                        b.markdown(f"PO **{order_no}** · created {h['created_date']} by {h['origin']}  \n"
-                                   f"Need by: {h['need_by'] or 'n/a'}  \nNotes: {h['notes'] or 'n/a'}")
+                        with st.container(border=True):
+                            a, b = st.columns(2)
+                            a.markdown("**Vendor**  \n" + vendor_card(h["supplier"]))
+                            b.markdown(f"**Ship to**  \n{pu.HOSPITAL['name']}  \n{pu.HOSPITAL['dept']}  \n{pu.HOSPITAL['address']}")
+                            b.markdown(f"PO **{order_no}** · created {h['created_date']} by {h['origin']}  \n"
+                                       f"Need by: {h['need_by'] or 'n/a'}  \nNotes: {h['notes'] or 'n/a'}")
 
-                        if current == "DRAFT":
-                            if pu.active_outage(conn, h["supplier"], TODAY):
-                                st.error(f"{h['supplier']} cannot supply right now: if you send this order it "
-                                         "will be rejected. Delete it and order from the backup vendor instead.")
-                            st.markdown("**Lines** (edit the quantities; 0 removes a line)")
-                            r_by_id = plan.set_index("item_id")
-                            ed = lines[["line_no", "item_id", "name", "unit", "qty", "unit_cost"]].assign(
-                                status=lines["item_id"].map(r_by_id["status"]),
-                                usable=lines["item_id"].map(r_by_id["usable"]),
-                                rop=lines["item_id"].map(r_by_id["rop"]).round())
-                            others = plan[((plan["supplier"] == h["supplier"]) | (plan["backup_supplier"] == h["supplier"]))
-                                          & ~plan["item_id"].isin(lines["item_id"])]
-                            edited = st.data_editor(
-                                ed, hide_index=True, width="stretch", key=f"draft_{order_no}",
-                                disabled=["line_no", "item_id", "name", "unit", "unit_cost", "status", "usable", "rop"],
-                                column_config={"qty": st.column_config.NumberColumn("Order qty", min_value=0, step=1),
-                                               "unit_cost": st.column_config.NumberColumn("Unit price", format="$%.2f"),
-                                               "usable": "Usable now", "rop": "Reorder point", "line_no": "Line"})
-                            add = st.multiselect("Add items from this vendor", others["item_id"],
-                                                 format_func=lambda i: f"{item_labels[i]} ({r_by_id.at[i, 'status']})",
-                                                 key=f"add_{order_no}")
-                            new_lines = list(zip(edited["item_id"], edited["qty"])) + [
-                                (i, int(r_by_id.at[i, "order_qty"]) or int(np.ceil(r_by_id.at[i, "q"]))) for i in add]
-                            subtotal = sum(q * pu.unit_price(r_by_id.loc[i], h["supplier"]) for i, q in new_lines)
-                            order_summary(h["supplier"], subtotal)
-                            c1, c2 = st.columns(2)
-                            stored_need = date.fromisoformat(h["need_by"]) if h["need_by"] else None
-                            need_by = c1.date_input("Need by", value=max(stored_need, TODAY) if stored_need   # a past date
-                                                    else TODAY + pd.Timedelta(days=pu.VENDORS[h["supplier"]]["quoted_days"]),
-                                                    min_value=TODAY, key=f"need_{order_no}", format="MM/DD/YYYY",
-                                                    help="Moved to today if the saved date has already passed")
-                            notes = c2.text_input("Notes to vendor", value=h["notes"] or "", key=f"notes_{order_no}")
-                            b1, b2, b3 = st.columns(3)
-                            clean_lines = [(str(i), int(q or 0)) for i, q in new_lines]
-                            if b1.button("Review and approve", icon=":material/send:", type="primary", key=f"send_{order_no}"):
-                                ask("po_send", order_no=order_no, supplier=h["supplier"], lines=clean_lines,
-                                    need_by=need_by, notes=notes, next_order=drafts_left[0] if drafts_left else None)
-                            if b2.button("Save changes", icon=":material/save:", key=f"save_{order_no}"):
-                                _, err = run(pu.update_draft, order_no, new_lines, need_by, notes)
+                            if current == "DRAFT":
+                                if pu.active_outage(conn, h["supplier"], TODAY):
+                                    st.error(f"{h['supplier']} cannot supply right now: if you send this order it "
+                                             "will be rejected. Delete it and order from the backup vendor instead.")
+                                st.markdown("**Lines** (edit the quantities; 0 removes a line)")
+                                r_by_id = plan.set_index("item_id")
+                                ed = lines[["line_no", "item_id", "name", "unit", "qty", "unit_cost"]].assign(
+                                    status=lines["item_id"].map(r_by_id["status"]),
+                                    usable=lines["item_id"].map(r_by_id["usable"]),
+                                    rop=lines["item_id"].map(r_by_id["rop"]).round())
+                                others = plan[((plan["supplier"] == h["supplier"]) | (plan["backup_supplier"] == h["supplier"]))
+                                              & ~plan["item_id"].isin(lines["item_id"])]
+                                edited = st.data_editor(
+                                    ed, hide_index=True, width="stretch", key=f"draft_{order_no}",
+                                    disabled=["line_no", "item_id", "name", "unit", "unit_cost", "status", "usable", "rop"],
+                                    column_config={"qty": st.column_config.NumberColumn("Order qty", min_value=0, step=1),
+                                                   "unit_cost": st.column_config.NumberColumn("Unit price", format="$%.2f"),
+                                                   "usable": "Usable now", "rop": "Reorder point", "line_no": "Line"})
+                                add = st.multiselect("Add items from this vendor", others["item_id"],
+                                                     format_func=lambda i: f"{item_labels[i]} ({r_by_id.at[i, 'status']})",
+                                                     key=f"add_{order_no}")
+                                new_lines = list(zip(edited["item_id"], edited["qty"])) + [
+                                    (i, int(r_by_id.at[i, "order_qty"]) or int(np.ceil(r_by_id.at[i, "q"]))) for i in add]
+                                subtotal = sum(q * pu.unit_price(r_by_id.loc[i], h["supplier"]) for i, q in new_lines)
+                                order_summary(h["supplier"], subtotal)
+                                c1, c2 = st.columns(2)
+                                stored_need = date.fromisoformat(h["need_by"]) if h["need_by"] else None
+                                need_by = c1.date_input("Need by", value=max(stored_need, TODAY) if stored_need   # a past date
+                                                        else TODAY + pd.Timedelta(days=pu.VENDORS[h["supplier"]]["quoted_days"]),
+                                                        min_value=TODAY, key=f"need_{order_no}", format="MM/DD/YYYY",
+                                                        help="Moved to today if the saved date has already passed")
+                                notes = c2.text_input("Notes to vendor", value=h["notes"] or "", key=f"notes_{order_no}")
+                                b1, b2, b3 = st.columns(3)
+                                clean_lines = [(str(i), int(q or 0)) for i, q in new_lines]
+                                if b1.button("Review and approve", icon=":material/send:", type="primary", key=f"send_{order_no}"):
+                                    ask("po_send", order_no=order_no, supplier=h["supplier"], lines=clean_lines,
+                                        need_by=need_by, notes=notes, next_order=drafts_left[0] if drafts_left else None)
+                                if b2.button("Save changes", icon=":material/save:", key=f"save_{order_no}"):
+                                    _, err = run(pu.update_draft, order_no, new_lines, need_by, notes)
+                                    if not err:
+                                        done(f"{order_no} saved (still a draft).")
+                                if b3.button("Delete draft", icon=":material/delete:", key=f"del_{order_no}"):
+                                    ask("po_delete", order_no=order_no, supplier=h["supplier"],
+                                        next_order=drafts_left[0] if drafts_left else None)
+                            else:
+                                acked = h["ack_date"] and h["ack_date"] <= TODAY.isoformat()
+                                shipped = h["ship_date"] and h["ship_date"] <= TODAY.isoformat()
+                                hidden = pd.Series(None, index=lines.index, dtype=object)
+                                asn = {p: db.asn_lots(conn, p) for p in lines["po_id"]} if shipped else {}
+                                show = lines.assign(              # only show what the vendor has told us so far
+                                    confirmed=lines["confirmed_qty"] if acked else hidden,
+                                    lot=[", ".join(l for l, _, _ in asn.get(p, [])) or None for p in lines["po_id"]]
+                                    if shipped else hidden,
+                                    expiry=[min((e for _, e, _ in asn.get(p, [])), default=None) for p in lines["po_id"]]
+                                    if shipped else hidden)
+                                st.dataframe(show[["line_no", "item_id", "name", "unit", "qty", "confirmed", "unit_cost",
+                                                   "amount", "lot", "expiry", "status", "received_qty"]],
+                                             hide_index=True, width="stretch", column_config={
+                                                 "line_no": "Line", "qty": "Ordered",
+                                                 "confirmed": st.column_config.NumberColumn(
+                                                     "Confirmed", help="What the vendor confirmed it can supply (after acknowledgement)"),
+                                                 "unit_cost": st.column_config.NumberColumn("Unit price", format="$%.2f"),
+                                                 "amount": st.column_config.NumberColumn("Amount", format="$%,.2f"),
+                                                 "lot": st.column_config.TextColumn("Lots (ASN)", help="From the vendor's ship notice. One line can arrive as several lots."),
+                                                 "expiry": "Expiry (ASN)", "received_qty": "Received"})
+                                order_summary(h["supplier"], float(lines["amount"].sum()))
+
+                        st.markdown("**Vendor messages**")
+                        for when, msg in pu.vendor_messages(conn, order_no, TODAY):
+                            st.markdown(f"- **{when:%b %d}**: {msg}")
+                        if current in ("SENT", "CONFIRMED", "SHIPPED"):
+                            eta = h["arrive_date"] if current == "SHIPPED" else h["promised_date"]
+                            st.caption(f"Next: {'delivery' if current == 'SHIPPED' else 'the vendor ships it'}. "
+                                       f"Expected around {pd.Timestamp(eta):%b %d}. Use Next in the sidebar to jump ahead.")
+
+                        c1, c2, c3 = st.columns(3)
+                        if current == "ARRIVED":
+                            if c1.button("Receive whole shipment (as per ASN)", icon=":material/inventory:", type="primary", key=f"recv_{order_no}"):
+                                got, err = run(pu.receive_order, order_no)
                                 if not err:
-                                    done(f"{order_no} saved (still a draft).")
-                            if b3.button("Delete draft", icon=":material/delete:", key=f"del_{order_no}"):
-                                ask("po_delete", order_no=order_no, supplier=h["supplier"],
-                                    next_order=drafts_left[0] if drafts_left else None)
-                        else:
-                            acked = h["ack_date"] and h["ack_date"] <= TODAY.isoformat()
-                            shipped = h["ship_date"] and h["ship_date"] <= TODAY.isoformat()
-                            hidden = pd.Series(None, index=lines.index, dtype=object)
-                            asn = {p: db.asn_lots(conn, p) for p in lines["po_id"]} if shipped else {}
-                            show = lines.assign(              # only show what the vendor has told us so far
-                                confirmed=lines["confirmed_qty"] if acked else hidden,
-                                lot=[", ".join(l for l, _, _ in asn.get(p, [])) or None for p in lines["po_id"]]
-                                if shipped else hidden,
-                                expiry=[min((e for _, e, _ in asn.get(p, [])), default=None) for p in lines["po_id"]]
-                                if shipped else hidden)
-                            st.dataframe(show[["line_no", "item_id", "name", "unit", "qty", "confirmed", "unit_cost",
-                                               "amount", "lot", "expiry", "status", "received_qty"]],
-                                         hide_index=True, width="stretch", column_config={
-                                             "line_no": "Line", "qty": "Ordered",
-                                             "confirmed": st.column_config.NumberColumn(
-                                                 "Confirmed", help="What the vendor confirmed it can supply (after acknowledgement)"),
-                                             "unit_cost": st.column_config.NumberColumn("Unit price", format="$%.2f"),
-                                             "amount": st.column_config.NumberColumn("Amount", format="$%,.2f"),
-                                             "lot": st.column_config.TextColumn("Lots (ASN)", help="From the vendor's ship notice. One line can arrive as several lots."),
-                                             "expiry": "Expiry (ASN)", "received_qty": "Received"})
-                            order_summary(h["supplier"], float(lines["amount"].sum()))
-
-                    st.markdown("**Vendor messages**")
-                    for when, msg in pu.vendor_messages(conn, order_no, TODAY):
-                        st.markdown(f"- **{when:%b %d}**: {msg}")
-                    if current in ("SENT", "CONFIRMED", "SHIPPED"):
-                        eta = h["arrive_date"] if current == "SHIPPED" else h["promised_date"]
-                        st.caption(f"Next: {'delivery' if current == 'SHIPPED' else 'the vendor ships it'}. "
-                                   f"Expected around {pd.Timestamp(eta):%b %d}. Use Next in the sidebar to jump ahead.")
-
-                    c1, c2, c3 = st.columns(3)
-                    if current == "ARRIVED":
-                        if c1.button("Receive whole shipment (as per ASN)", icon=":material/inventory:", type="primary", key=f"recv_{order_no}"):
-                            got, err = run(pu.receive_order, order_no)
-                            if not err:
-                                done(f"Received {order_no}: " + ", ".join(f"{n} × {q:,} (lot {l}, lead time {lt} d)"
-                                                                        for n, q, l, lt in got))
-                        c1.caption("Different quantity or lot on the boxes? Receive line by line in Stock movements.")
-                    if current in ("SENT", "CONFIRMED"):
-                        if c2.button("Cancel order", icon=":material/cancel:", key=f"cancel_{order_no}"):
-                            ask("po_cancel", order_no=order_no, supplier=h["supplier"])
-                    c3.download_button("Download PO document", pu.po_document_html(conn, order_no),
-                                       f"{order_no}.html", "text/html", key=f"doc_{order_no}", icon=":material/download:",
-                                       help="A printable purchase order (open it in your browser and print or save as PDF)")
+                                    done(f"Received {order_no}: " + ", ".join(f"{n} × {q:,} (lot {l}, lead time {lt} d)"
+                                                                            for n, q, l, lt in got))
+                            c1.caption("Different quantity or lot on the boxes? Receive line by line in Stock movements.")
+                        if current in ("SENT", "CONFIRMED"):
+                            if c2.button("Cancel order", icon=":material/cancel:", key=f"cancel_{order_no}"):
+                                ask("po_cancel", order_no=order_no, supplier=h["supplier"])
+                        c3.download_button("Download PO document", pu.po_document_html(conn, order_no),
+                                           f"{order_no}.html", "text/html", key=f"doc_{order_no}", icon=":material/download:",
+                                           help="A printable purchase order (open it in your browser and print or save as PDF)")
 
         elif buy_view == "New purchase order":
             vendor_names = list(pu.VENDORS)
@@ -2786,4 +2881,5 @@ confirm_dialog()
 
 # icon tiles for every KPI card drawn on this page
 st.html("<style>" + ui.kpi_css(KPI_TILES) + "".join(
-    f'.st-key-{k} [data-testid="stMetricValue"]{{color:#9A9EB8 !important;}}' for k in MUTED_KPIS) + "</style>")
+    f'.st-key-{k} [data-testid="stMetricValue"]{{color:#9A9EB8 !important;}}' for k in MUTED_KPIS) +
+    ui.drill_css(DRILL_CUES) + "</style>")

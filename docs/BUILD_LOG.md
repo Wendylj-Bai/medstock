@@ -358,3 +358,23 @@ moved out of "More" into the main menu, after Reports.
 says it cannot place orders, change stock, resolve alerts or carry out its suggestions. Approval-based
 features are labelled "Coming later". Tests check the wording (including that "autonomous" never
 appears), the signed-in and signed-out homepage buttons, the Dashboard shortcut and the Help tab.
+
+## 21. Cards that open the list behind them
+
+**Date:** November 5, 2026
+
+**Built:** The Dashboard's **Order now** card opens Inventory with the Order now quick view selected
+and the other filters cleared, so the rows match the card's count. The Purchasing **Drafts** card
+filters the Purchase orders list to drafts only, shows an active state while the filter is on, and
+offers **All open orders** to remove it. Neither opens a draft or writes anything. Each card is one
+real button covering the card, so it works with a mouse, Tab and Enter, and screen readers hear the
+count ("View 75 items to order now"). The five Purchasing stage cards now wrap on narrow screens
+instead of squeezing into five columns.
+
+**Problem:** The numbers on the cards were a dead end: seeing "Order now: 75" meant finding the same
+list again by hand, and the Purchasing cards were cut off on a tablet with the menu open.
+
+**Decision:** Each card sets the page's existing filter (the Inventory quick view, a drafts filter on
+the order list), and the address carries it as `?view=`, so a reload returns to the same view after
+sign-in. The count and the rows come from the same data. The remaining Purchasing cards and an
+ordering step from Inventory are left for the next packet.

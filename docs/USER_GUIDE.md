@@ -138,6 +138,11 @@ has moved) and one line such as *"44 items to order now and 40 Vital items at ri
 
 Hover over the **?** next to a card for its exact definition.
 
+The **Order now** card is also a link: click it (or Tab to it and press Enter) to open **Inventory**
+with the **Order now** quick view selected and no other filters, so the list shows exactly the items
+the card counts. It only opens the list; it does not create drafts or change anything. The address
+bar keeps the view (`?page=inventory&view=order-now`), so reloading and signing in again returns to it.
+
 ### 5.2 Urgent inventory actions
 
 A short table of the **8 most urgent items**: no usable stock first, then shortage risk, then items
@@ -252,7 +257,10 @@ MedStock records the real delivery time, which makes future reorder points more 
 > A delivery that is already expired is rejected. Do not accept it; return it to the vendor.
 
 ### 6.3 Review, approve and send a purchase order
-1. 🛒 **Purchasing** > **📄 Purchase orders** > choose the PO (drafts say *📝 Draft*).
+1. 🛒 **Purchasing** > **📄 Purchase orders** > choose the PO (drafts say *📝 Draft*). To see only the
+   drafts, click the **Drafts** card at the top: the list shows just the drafts and none is opened until
+   you choose one. **All open orders** (or clicking the card again) removes the filter. The filter only
+   changes what is listed; nothing is approved, sent or edited.
 2. You see the PO the way the vendor will: vendor address and contact, ship-to address, payment terms,
    the lines with quantity and price, freight and total.
 3. Change quantities if needed (0 removes a line), add other items from the same vendor, set the

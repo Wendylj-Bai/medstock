@@ -744,7 +744,8 @@ def sidebar_badges(at):
     """Every count badge drawn in the app's CSS: (container key, text) for each '::after{content:...}'."""
     import re
     css = " ".join(e.proto.body for e in at.get("html"))
-    return re.findall(r'\.st-key-([\w-]+) button::after\{content:"([^"]+)"', css)
+    return [(k, t) for k, t in re.findall(r'\.st-key-([\w-]+) button::after\{content:"([^"]+)"', css)
+            if not k.startswith("drill_")]                       # card cues ("View list") are not badges
 
 
 def test_the_bell_is_the_only_notification_badge(app):
@@ -800,3 +801,135 @@ def test_ask_medstock_page_leads_with_value_and_keeps_safeguards(app, monkeypatc
     assert "gemini-3.5-flash-lite" in captions and "fictional demo data" in captions      # model and privacy kept
     assert "autonomous" not in captions.lower()
     assert len([b for b in main.button if (b.key or "").startswith("ai_example_")]) == len(assistant.EXAMPLE_QUESTIONS)
+
+
+# ---------------------------------------------------------------------------
+# Drill-down cards (Interaction Packet 1): Dashboard Order now, Purchasing Drafts
+# ---------------------------------------------------------------------------
+def db_fingerprint(conn):
+    """Every row of every table, so a test can prove nothing was written."""
+    import hashlib
+    return hashlib.sha256("\n".join(conn.iterdump()).encode()).hexdigest()
+
+
+def showing_count(at):
+    """The 'Showing N of M items' line on Inventory."""
+    import re
+    text = next(m.value for m in at.main.markdown if m.value.startswith("Showing **"))
+    return int(re.search(r"Showing \*\*(\d+) of", text).group(1))
+
+
+def test_order_now_card_opens_inventory_on_order_now_and_writes_nothing(app):
+    at, conn = app
+    before = db_fingerprint(conn)
+    count = metric_value(at, "Order now")
+    card = at.button(key="drill_now")
+    assert card.label == f"View {count} item{'s' if count != 1 else ''} to order now"   # name includes the count
+    card.click().run()
+    assert not at.exception
+    assert at.session_state["page"] == "Inventory"
+    assert at.segmented_control(key="inv_quick").value == "Order now"
+    assert at.query_params["page"] == "inventory" and at.query_params["view"] == "order-now"
+    assert showing_count(at) == count                                    # the count on the card
+    at.selectbox(key="inv_page_size").set_value("All").run()
+    rows = reorder_table(at)
+    assert len(rows) == count and set(rows["status"]) <= {"Order now"}   # and exactly those rows
+    assert db_fingerprint(conn) == before                                # navigation only, no writes
+
+
+def test_order_now_card_clears_other_inventory_filters_so_rows_match(app):
+    at, _ = app
+    count = metric_value(at, "Order now")
+    open_page(at, "Inventory")
+    at.text_input(key="inv_search").input("zzz-no-match").run()
+    open_page(at, "Dashboard")
+    at.button(key="drill_now").click().run()
+    assert at.text_input(key="inv_search").value == ""
+    assert showing_count(at) == count
+
+
+def test_order_now_view_survives_a_reload_after_sign_in(app):
+    at, _ = app
+    at.query_params["page"] = "inventory"
+    at.query_params["view"] = "order-now"
+    at.run()
+    assert at.session_state["page"] == "Inventory"
+    assert at.segmented_control(key="inv_quick").value == "Order now"
+    at.segmented_control(key="inv_quick").set_value("All").run()        # the user's own choice then wins
+    assert at.segmented_control(key="inv_quick").value == "All" and "view" not in at.query_params
+
+
+def test_menu_navigation_drops_the_filtered_view_from_the_address(app):
+    at, _ = app
+    at.button(key="drill_now").click().run()
+    open_page(at, "Purchasing")
+    assert "view" not in at.query_params
+
+
+def make_drafts(conn):
+    import planning
+    import purchasing as pu
+    items, usage, deliveries, open_pos, _ = db.load_frames(conn)
+    return pu.draft_suggested_orders(conn, planning.build_plan(items, usage, deliveries, open_pos=open_pos))
+
+
+def po_table(at):
+    return next(d.value for d in at.main.dataframe if "order_no" in d.value.columns)
+
+
+def test_drafts_card_lists_only_drafts_and_changes_nothing(app):
+    import purchasing as pu
+    at, conn = app
+    made = make_drafts(conn)
+    pu.send_order(conn, made[0])                                         # one open order that is not a draft
+    open_page(at, "Purchasing")
+    drafts = [r[0] for r in conn.execute("SELECT order_no FROM po_headers WHERE status = 'DRAFT'")]
+    assert metric_value(at, "Drafts") == len(drafts)
+    before = db_fingerprint(conn)
+    at.button(key="drill_drafts").click().run()
+    assert not at.exception
+    rows = po_table(at)
+    assert sorted(rows["order_no"]) == sorted(drafts)                    # exactly the drafts
+    assert len(rows) == metric_value(at, "Drafts")                       # the card count is the row count
+    assert at.button(key="drill_on_drafts")                              # active state on the card
+    assert at.selectbox(key="po_pick").value is None                     # no draft opened for the user
+    assert not [b for b in at.button if b.key and b.key.startswith(("send_", "save_", "del_"))]
+    assert db_fingerprint(conn) == before                                # nothing created, approved, sent or edited
+    assert at.query_params["view"] == "drafts"
+
+
+def test_clearing_the_drafts_filter_restores_all_open_orders(app):
+    at, conn = app
+    make_drafts(conn)
+    open_page(at, "Purchasing")
+    all_open = sorted(po_table(at)["order_no"])
+    at.button(key="drill_drafts").click().run()
+    at.button(key="po_clear_stage").click().run()
+    assert not at.exception
+    assert sorted(po_table(at)["order_no"]) == all_open
+    assert at.button(key="drill_drafts") and "view" not in at.query_params
+    assert at.selectbox(key="po_pick").value is not None                 # normal view opens the first order again
+    at.button(key="drill_drafts").click().run()                          # the active card also toggles it off
+    at.button(key="drill_on_drafts").click().run()
+    assert sorted(po_table(at)["order_no"]) == all_open
+
+
+def test_choosing_a_draft_from_the_filtered_list_opens_it_for_review(app):
+    import purchasing as pu
+    at, conn = app
+    made = make_drafts(conn)
+    open_page(at, "Purchasing")
+    at.button(key="drill_drafts").click().run()
+    at.selectbox(key="po_pick").set_value(made[-1]).run()
+    assert not at.exception
+    assert at.button(key=f"send_{made[-1]}")                             # review controls appear only now
+    assert pu.order_header(conn, made[-1])["status"] == "DRAFT"
+
+
+def test_drafts_card_with_no_drafts_shows_an_empty_list(app):
+    at, conn = app
+    open_page(at, "Purchasing")
+    assert metric_value(at, "Drafts") == 0
+    at.button(key="drill_drafts").click().run()
+    assert not at.exception
+    assert at.button(key="drill_on_drafts").label.startswith("Drafts filter is on, showing 0 drafts")

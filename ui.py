@@ -157,6 +157,11 @@ def kpi_css(cards):
         for k, (ic, color) in cards.items())
 
 
+def drill_css(cues):
+    """cues: {drill button key: visible text}. The card's corner hint; screen readers use the button label."""
+    return "".join(f'.st-key-{k} button::after{{content:"{cue}" / "";}}' for k, cue in cues.items())
+
+
 APP_CSS = """
 /* sidebar menu */
 [data-testid="stSidebar"] [class*="st-key-nav_"] button{justify-content:flex-start;background:transparent;border:none;
@@ -190,6 +195,7 @@ APP_CSS = """
 [class*="st-key-row_"]{align-items:stretch;}
 [class*="st-key-row_"] > *{min-width:0;}
 .st-key-row_kpi > *{flex:1 1 200px;}
+.st-key-row_stage > *{flex:1 1 170px;}
 .st-key-row_supply > *{flex:1 1 240px;}
 .st-key-row_chart1 > *, .st-key-row_chart2 > *{flex:1 1 380px;}
 
@@ -221,6 +227,33 @@ APP_CSS = """
 [data-testid="stMetricLabel"] p{font-size:.84rem !important;font-weight:500 !important;color:#6B7090 !important;}
 [data-testid="stMetricValue"]{font-size:1.65rem !important;font-weight:700 !important;color:#1B1F3B;line-height:1.25;}
 [data-testid="stMetricDelta"]{font-size:.8rem;}
+
+/* clickable KPI cards (app.drill_card): an invisible full-card button over the metric, with a short visible
+   cue in the bottom-right corner. Its label (with the count) is kept for screen readers only. */
+[class*="st-key-kpi_"]:has([class*="st-key-drill_"]){position:relative;}
+[class*="st-key-drill_"]{position:absolute !important;inset:0;z-index:1;width:auto !important;margin:0 !important;}
+[class*="st-key-drill_"] .stButton, [class*="st-key-drill_"] .stButton > div{width:100%;height:100%;}
+[class*="st-key-drill_"] button{width:100%;height:100%;min-height:0;background:transparent !important;border:none;
+  box-shadow:none !important;border-radius:16px;padding:0 1rem .9rem 0;display:flex;align-items:flex-end;
+  justify-content:flex-end;cursor:pointer;color:#5B3DF5;}
+[class*="st-key-drill_"] button > div{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);
+  clip-path:inset(50%);white-space:nowrap;}
+[class*="st-key-drill_"] button::after{font-size:.8rem;font-weight:600;color:#5B3DF5;line-height:1.2;
+  padding:.18rem .55rem;border-radius:999px;background:#F1EDFF;white-space:nowrap;}
+[class*="st-key-drill_"] button:focus-visible{outline:none;}
+[class*="st-key-kpi_"]:has([class*="st-key-drill_"]) [data-testid="stMetric"]{
+  transition:border-color .15s ease, box-shadow .15s ease, transform .08s ease;}
+[class*="st-key-kpi_"]:has([class*="st-key-drill_"] button:hover) [data-testid="stMetric"]{
+  border-color:#B9A8FF;box-shadow:0 10px 24px rgba(91,61,245,.14);}
+[class*="st-key-kpi_"]:has([class*="st-key-drill_"] button:focus-visible) [data-testid="stMetric"]{
+  outline:3px solid #7C5CFF;outline-offset:2px;}
+[class*="st-key-kpi_"]:has([class*="st-key-drill_"] button:active) [data-testid="stMetric"]{
+  transform:translateY(1px);background:#F7F5FF;}
+[class*="st-key-kpi_"]:has([class*="st-key-drill_on_"]) [data-testid="stMetric"]{
+  border:2px solid #7C5CFF;background:#F5F2FF;}
+[class*="st-key-drill_on_"] button::after{background:#5B3DF5;color:#FFFFFF;}
+[class*="st-key-kpi_"]:has([class*="st-key-drill_"]) [data-testid="stMetricLabel"] [data-testid="stTooltipHoverTarget"]{
+  position:relative;z-index:2;}
 [data-testid="stExpander"] details{background:#FFFFFF;border-radius:14px;}
 [data-testid="stForm"]{background:#FFFFFF;border-radius:16px;}
 
