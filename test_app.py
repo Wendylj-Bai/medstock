@@ -272,32 +272,54 @@ def test_preparing_drafts_on_the_dashboard_opens_purchasing_on_the_first_draft(a
 
 
 def test_ask_medstock_without_an_api_key_explains_how_to_set_it_up(app, monkeypatch):
+    import assistant
     at, _ = app
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(assistant, "get_api_key", lambda *a, **k: None)   # the secrets file may hold a real key
     main = open_page(at, "Ask MedStock")
     assert not at.exception
-    assert any("ANTHROPIC_API_KEY" in i.value for i in main.info)
+    info = " ".join(i.value for i in main.info)
+    assert "GEMINI_API_KEY" in info and "Everything else in MedStock works" in info
+    captions = " ".join(c.value for c in main.caption)
+    assert "fictional demo data" in captions and "improve its products" in captions      # privacy note
+    assert all(b.disabled for b in main.button if b.key and b.key.startswith("ai_example_"))
 
 
-def test_ask_medstock_answers_an_example_question_with_a_fake_model(app, monkeypatch):
+def test_every_page_works_without_any_ai_key(app, monkeypatch):
+    import assistant
+    at, _ = app
+    monkeypatch.setattr(assistant, "get_api_key", lambda *a, **k: None)
+    for title, _, _ in ui.PAGES:
+        open_page(at, title)
+        assert not at.exception, (title, [e.value for e in at.exception])
+
+
+def test_ask_medstock_answers_an_example_question_with_a_fake_gemini(app, monkeypatch):
     from types import SimpleNamespace as NS
+    from google.genai import types as gt
     import assistant
     at, conn = app
+    usage = NS(prompt_token_count=900, candidates_token_count=60, thoughts_token_count=0, cached_content_token_count=0,
+               tool_use_prompt_token_count=0)
     replies = [
-        NS(content=[NS(type="tool_use", id="c1", name="get_supply_risks", input={})], stop_reason="tool_use",
-           usage=NS(input_tokens=900, output_tokens=80, cache_read_input_tokens=0, cache_creation_input_tokens=0)),
-        NS(content=[NS(type="text", text="No vendors are disrupted right now.")], stop_reason="end_turn",
-           usage=NS(input_tokens=1200, output_tokens=60, cache_read_input_tokens=0, cache_creation_input_tokens=0)),
+        NS(candidates=[NS(content=gt.Content(role="model", parts=[gt.Part(function_call=gt.FunctionCall(
+            id="c1", name="get_supply_risks", args={}))]), finish_reason=NS(name="STOP"))],
+           usage_metadata=usage, prompt_feedback=None),
+        NS(candidates=[NS(content=gt.Content(role="model", parts=[gt.Part(text="No vendors are disrupted right now.")]),
+                          finish_reason=NS(name="STOP"))], usage_metadata=usage, prompt_feedback=None),
     ]
-    fake = NS(beta=NS(messages=NS(create=lambda **kw: replies.pop(0))))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
-    monkeypatch.setattr(assistant, "make_client", lambda key: fake)
+    fake = NS(models=NS(generate_content=lambda **kw: replies.pop(0)))
+    monkeypatch.setattr(assistant, "get_api_key", lambda *a, **k: "test-key-not-real")
+    monkeypatch.setattr(assistant, "make_provider", lambda cfg, key: assistant.GeminiProvider(fake, cfg["model"]))
     open_page(at, "Ask MedStock")
     at.button(key="ai_example_3").click().run()
     assert not at.exception, [e.value for e in at.exception]
     shown = " ".join(m.value for m in at.main.markdown)
     assert "No vendors are disrupted right now." in shown
-    assert conn.execute("SELECT COUNT(*) FROM ai_runs WHERE status = 'ok'").fetchone()[0] == 1
+    caption = " ".join(c.value for c in at.main.caption)
+    assert "at paid rates" in caption and "billing not verified" in caption       # an estimate, labelled as one
+    row = conn.execute("SELECT provider, model, status, cost_usd FROM ai_runs").fetchone()
+    assert tuple(row)[:3] == ("gemini", "gemini-3.5-flash-lite", "ok")
+    assert row["cost_usd"] == pytest.approx((1800 * 0.30 + 120 * 2.50) / 1e6, abs=1e-6)
 
 
 def test_urgent_actions_table_is_short_sorted_and_labelled(app):

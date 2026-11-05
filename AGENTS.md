@@ -87,7 +87,7 @@ app.py draws the screens; homepage.py and auth.py gate them
 | `auth.py` | Sign-in with salted PBKDF2 hashes from Streamlit secrets | `render_login`, `verify`, `hash_password` |
 | `homepage.py` | Public portfolio page (no database access) | `render_homepage` |
 | `app.py` | All screens: 12 pages plus the sidebar | |
-| `assistant.py` | Ask MedStock: read-only tools over existing functions, the agent loop, audit log, spending cap, grounding check (see `docs/AI_DESIGN.md`) | `run_turn`, `TOOLS`, `run_tool`, `grounding_check` |
+| `assistant.py` | Ask MedStock: read-only tools over existing functions, a provider adapter (Gemini by default, Anthropic optional), the agent loop, audit log, usage caps, grounding check (see `docs/AI_DESIGN.md`). Tests never call a real AI service: `conftest.py` blocks the app's client factories and the Google and Anthropic SDK constructors | `run_turn`, `TOOLS`, `GeminiProvider`, `settings`, `grounding_check` |
 | `ui.py` | Palette, icon set (Lucide-style line icons and solid feature icons), sidebar menu and card CSS | `PAGES`, `nav_css`, `kpi_css`, `tile_uri`, `solid_uri` |
 
 **Pages** are listed once, in `ui.PAGES` (title, icon, color). The sidebar menu is built from it

@@ -248,7 +248,7 @@ assistant with write access to a stock system is risky.
 
 **Decision:** The model does no inventory math and has no tool that changes anything. After each
 answer the app compares every figure with the tool results and flags any that did not come from
-the data. There is a daily dollar cap per user and a limit on lookups per question, and text from
+the data. There is a daily dollar limit per user, checked before each question, and a limit on lookups per question, and text from
 vendor notes or recalls is treated as data, never as instructions. The tests use a scripted fake
 model, so they are free and run offline.
 
@@ -304,3 +304,38 @@ repeated request change nothing, that Confirm applies once, and that only one ba
 test tool cannot press Esc or the dialog's X, so I checked those in a real browser on a sandbox copy
 of the data: both closed the dialog without changing anything, and Confirm refused the line exactly
 once. Full suite: 136 tests pass.
+
+## 19. Ask MedStock on Gemini
+
+**Date:** November 4, 2026
+
+**Built:** Ask MedStock now runs on Google Gemini by default (`gemini-3.5-flash-lite`, through the
+official `google-genai` SDK), with Anthropic Claude kept as an option. A small provider adapter turns
+each company's request and reply format into one shared shape, so the seven read-only tools, the
+agent loop, the audit log, the usage caps and the grounding check did not change. Each audit row now
+records the provider and model. The page shows a privacy note above the chat.
+
+**Problem:** Gemini's free tier has no per-answer charge, and the app cannot tell whether a key belongs
+to a free-tier or a billed project, so a cost of "free" could not be trusted for the dollar limit. The free
+tier may also use what people type to improve Google's products. And the Streamlit test runner reads the
+local secrets file, which holds a real key, so a test could have called the real API.
+
+**Decision:** Every Gemini answer is priced at Google's standard paid rates and labelled as an estimate,
+not an invoice; the daily dollar limit counts that estimate, even when the app is set to the free tier.
+The limit is checked before each new question, so the answer in progress can take the day's total
+slightly over it; it is a guardrail, not an exact hard cap.
+With the free setting, the page adds that the expected charge is $0 within the free tier and that
+MedStock has not verified the billing status. Every provider also has a daily question limit. Only
+MedStock's tools are offered: no Google Search, so answers can only use the fictional data, and the docs
+say the free tier must never see real hospital, patient, vendor-confidential or personal information.
+`conftest.py` blocks AI client creation in every test, both the app's own factories and the Google and
+Anthropic SDK constructors; the tests use scripted fake replies for text answers, several tool rounds,
+bad and malformed tool calls, refusals, errors (with key-like text redacted from the log), round limits,
+budgets and missing keys. I checked the model once by hand with my own key on a throwaway copy of the
+sandbox data: it looked up the reorder plan and answered with its numbers.
+
+**Correction:** My first pricing charged cached input tokens twice. Gemini's `prompt_token_count`
+already includes the cached tokens, so they were billed at the normal input rate and again as cache
+reads, and the cache rate was wrong ($0.30 instead of $0.03). Now cached tokens are taken out of normal
+input and priced once at $0.03 per million. A test with 6,000 cached tokens out of 10,000 checks the
+exact amount ($0.00263).

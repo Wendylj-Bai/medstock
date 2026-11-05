@@ -345,13 +345,24 @@ Fill rate and inventory value usually move in opposite directions: that trade-of
 **Item detail** > choose the item > open **Show the calculation**. Every number is shown step by step.
 
 ### 6.12 Ask MedStock (AI assistant)
-**Ask MedStock** in the menu. Type a question, or click one of the example questions, for example
-"What should I order today, and why?". The assistant looks the answer up in MedStock's own data and
-shows, under each answer, how many lookups it made, how long it took, what it cost, and whether every
-figure in the answer was found in the data. Open **What it looked up** to see each lookup.
+**Ask MedStock** is under **More** in the menu. Type a question, or click one of the example questions,
+for example "What should I order today, and why?". The assistant looks the answer up in MedStock's own
+data and shows, under each answer, how many lookups it made, how long it took, how many tokens it used,
+an **estimated** cost at the provider's standard paid rates, and whether every figure in the answer was
+found in the data. The estimate is not an invoice: MedStock cannot see whether the Gemini key belongs to
+a free-tier or a billed project. When the app is set up for the free tier, the page adds that the expected
+charge is $0 while the project stays within the free tier. The daily spending limit counts the estimate
+and is checked before each new question: once it is reached, no more questions are sent that day. The
+answer in progress when the limit is reached can take the total slightly over it. Open **What it looked up** to see each lookup.
 - It can only **read**. It cannot order, issue, receive or change settings; it tells you which page does that.
-- **New conversation** clears the chat. **Audit log and spending** lists every answer with its cost.
-- It needs an Anthropic API key in the app's secrets. Each account has a daily spending limit.
+- It uses Google Gemini by default (the model is named above the chat). It does not search the web;
+  it only uses MedStock's data.
+- **Privacy:** on Gemini's free tier, Google may use what you type to improve its products. Use it only
+  with this fictional demo, never with real patient, hospital, vendor-confidential or personal information.
+- **New conversation** clears the chat. **Audit log and usage** lists every answer with its provider,
+  model, tokens and estimated cost.
+- It needs a `GEMINI_API_KEY` in the app's secrets (see docs/AI_DESIGN.md). Each account has a daily
+  question limit and a daily limit on estimated spending. Without a key, the page explains how to add one and everything else works.
 
 ---
 

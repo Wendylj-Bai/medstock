@@ -333,22 +333,32 @@ if PAGE == "Ask MedStock":
                "tools, so it can explain and advise but cannot order, issue or change anything. All data is "
                "fictional.")
     try:
-        ai_key = assistant.get_api_key(st.secrets)
-        ai_cfg = st.secrets.get("ai", {})
+        ai_cfg = assistant.settings(st.secrets)
+        ai_key = assistant.get_api_key(st.secrets, ai_cfg["provider"])
     except Exception:
-        ai_key, ai_cfg = assistant.get_api_key(None), {}
-    ai_budget = float(ai_cfg.get("daily_budget_usd", assistant.DAILY_BUDGET_USD))
+        ai_cfg = assistant.settings(None)
+        ai_key = assistant.get_api_key(None, ai_cfg["provider"])
+    ai_name = {"gemini": "Google Gemini", "anthropic": "Anthropic Claude"}[ai_cfg["provider"]]
+    ai_free = ai_cfg["provider"] == "gemini" and ai_cfg["billing"] != "paid"
     ai_user = auth.current_user() or "demo"
-    st.session_state.setdefault("ai_messages", [])      # the conversation in API format (append-only)
+    st.session_state.setdefault("ai_messages", [])      # the conversation in the provider's format (append-only)
     st.session_state.setdefault("ai_chat", [])          # what is shown on screen
+    if st.session_state.get("ai_provider") != (ai_cfg["provider"], ai_cfg["model"]):   # switching starts over
+        st.session_state.update(ai_provider=(ai_cfg["provider"], ai_cfg["model"]), ai_messages=[], ai_chat=[])
 
-    def ask(q):
+    def ai_ask(q):
         st.session_state["ai_pending"] = q
 
+    st.caption(f":material/shield: Answers come from {ai_name} ({ai_cfg['model']}) using only MedStock's tools. "
+               + ("On Gemini's free tier, Google may use what you type to improve its products. " if ai_free else "")
+               + "Use it only with this fictional demo data, never with real patient, hospital, vendor-confidential "
+                 "or personal information.")
     if not ai_key:
-        st.info("Ask MedStock needs an Anthropic API key. Add a line `ANTHROPIC_API_KEY = \"...\"` to "
+        key_name = assistant.KEY_NAMES[ai_cfg["provider"]]
+        st.info(f"Ask MedStock needs a {ai_name} API key. Add a line `{key_name} = \"...\"` to "
                 "`.streamlit/secrets.toml` (on Streamlit Cloud: Manage app > Settings > Secrets), then reload. "
-                "The key stays in secrets and is never saved in the code.")
+                "The key stays in secrets and is never saved in the code. Everything else in MedStock works "
+                "without it.")
     for m in st.session_state["ai_chat"]:
         with st.chat_message(m["role"], avatar=":material/person:" if m["role"] == "user" else ":material/auto_awesome:"):
             st.markdown(m["text"])
@@ -357,9 +367,14 @@ if PAGE == "Ask MedStock":
                 grounded = (f"all {n(r['figures'], 'figure')} found in the looked-up data" if not r["ungrounded"]
                             else f"{len(r['ungrounded'])} of {n(r['figures'], 'figure')} not found in the looked-up "
                                  "data: " + ", ".join(f"{x:g}" for x in r["ungrounded"][:5]))
-                st.caption(f"{n(len(r['tools']), 'lookup')} · {r['latency_ms'] / 1000:.1f} s · "
-                           f"${r['cost']:.3f} · {grounded}" if r["status"] == "ok" else
-                           f"{n(len(r['tools']), 'lookup')} · {r['latency_ms'] / 1000:.1f} s")
+                tokens = f"{r['input_tokens'] + r['output_tokens']:,} tokens"
+                cost = (ui.md_safe(f"est. ${r['cost']:.4f} at paid rates") if r["cost"] is not None
+                        else "provider-dependent cost")
+                if r["cost"] is not None and ai_free:
+                    cost += ui.md_safe(" (expected charge $0 within the free tier; billing not verified)")
+                st.caption(f"{n(len(r['tools']), 'lookup')} · {r['latency_ms'] / 1000:.1f} s · {tokens} · {cost} · "
+                           f"{grounded}" if r["status"] == "ok" else
+                           f"{n(len(r['tools']), 'lookup')} · {r['latency_ms'] / 1000:.1f} s · {r['status']}")
                 if r["tools"]:
                     with st.expander("What it looked up"):
                         for t in r["tools"]:
@@ -371,7 +386,7 @@ if PAGE == "Ask MedStock":
         st.markdown("**Try a question:**")
         ex = st.columns(len(assistant.EXAMPLE_QUESTIONS))
         for i, q in enumerate(assistant.EXAMPLE_QUESTIONS):
-            ex[i].button(q, key=f"ai_example_{i}", on_click=ask, args=(q,), disabled=not ai_key, width="stretch")
+            ex[i].button(q, key=f"ai_example_{i}", on_click=ai_ask, args=(q,), disabled=not ai_key, width="stretch")
 
     typed = st.chat_input("Ask about stock, orders, vendors, recalls or KPIs", disabled=not ai_key, key="ai_input")
     question = typed or st.session_state.pop("ai_pending", None)
@@ -385,8 +400,17 @@ if PAGE == "Ask MedStock":
                     ai_status.write(f"{'Could not read' if failed else 'Checked'} "
                                     f"{assistant.TOOL_LABELS.get(name, name).lower()}")
                 ctx = assistant.Context(conn, TODAY, plan, lots=lots, po_list=po_list, outlook=outlook)
-                result = assistant.run_turn(assistant.make_client(ai_key), ctx, st.session_state["ai_messages"],
-                                            question, user=ai_user, on_tool=show_tool, budget=ai_budget)
+                try:
+                    provider = assistant.make_provider(ai_cfg, ai_key)
+                except Exception as e:                      # SDK missing or misconfigured: say so, never crash
+                    provider = None
+                    result = {"answer": "The AI service is not set up correctly on this server. Everything else in "
+                                        "MedStock still works.", "status": "error", "tools": [], "latency_ms": 0,
+                              "error": assistant._safe_error(e)}
+                if provider is not None:
+                    result = assistant.run_turn(provider, ctx, st.session_state["ai_messages"], question,
+                                                user=ai_user, on_tool=show_tool, budget=ai_cfg["daily_budget_usd"],
+                                                question_limit=ai_cfg["daily_question_limit"])
                 ai_status.update(label="Done" if result["status"] == "ok" else "Stopped", state="complete")
         st.session_state["ai_chat"].append({"role": "assistant", "text": result["answer"], "run": result})
         st.rerun()
@@ -395,22 +419,35 @@ if PAGE == "Ask MedStock":
     if st.session_state["ai_chat"] and c1.button("New conversation", icon=":material/refresh:", key="ai_reset"):
         st.session_state["ai_messages"], st.session_state["ai_chat"] = [], []
         st.rerun()
-    with st.expander("Audit log and spending"):
+    with st.expander("Audit log and usage"):
         s_ = assistant.usage_summary(conn)
         a1, a2, a3, a4 = st.columns(4)
         a1.metric("Answers", s_["answers"])
-        a2.metric("Total cost", f"${s_['cost']:.2f}")
+        a2.metric("Estimated cost", f"${s_['cost']:.2f}",
+                  help="Estimated from the providers' standard paid rates, not an invoice. "
+                       + ("Configured as Gemini free tier: the expected charge is $0 while the project stays within "
+                          "an eligible free tier. MedStock cannot verify the project's billing status. "
+                          if ai_free else "")
+                       + f"{n(s_['unpriced'], 'answer')} had no price list (provider-dependent).")
         a3.metric("Average time", f"{s_['avg_seconds']:.1f} s")
         a4.metric("Figures found in data", f"{s_['grounded_share']:.0%}" if s_["grounded_share"] is not None else "n/a",
                   help="Share of numbers in answers that match a value the tools returned")
-        st.caption(f"Today's spend for {ai_user}: ${assistant.spent_today(conn, ai_user):.2f} of "
-                   f"${ai_budget:.2f}. Model: {assistant.MODEL}.")
-        log = pd.read_sql("SELECT created_at, question, status, tool_calls, cost_usd, latency_ms, figures, ungrounded "
+        st.caption(ui.md_safe(
+            f"Today for {ai_user}: {assistant.questions_today(conn, ai_user)} of {ai_cfg['daily_question_limit']} "
+            f"questions, ${assistant.spent_today(conn, ai_user):.2f} of ${ai_cfg['daily_budget_usd']:.2f} estimated "
+            f"spending (paid-rate estimate, checked before each new question). Provider: {ai_name}, "
+            f"model {ai_cfg['model']}."))
+        log = pd.read_sql("SELECT created_at, provider, model, question, status, tool_calls, input_tokens, "
+                          "output_tokens, cost_usd, cost_note, latency_ms, figures, ungrounded "
                           "FROM ai_runs ORDER BY run_id DESC LIMIT 20", conn)
         if len(log):
             st.dataframe(log, hide_index=True, width="stretch", column_config={
-                "created_at": "When", "question": "Question", "status": "Status", "tool_calls": "Lookups",
-                "cost_usd": st.column_config.NumberColumn("Cost", format="$%.4f"),
+                "created_at": "When", "provider": "Provider", "model": "Model", "question": "Question",
+                "status": "Status", "tool_calls": "Lookups", "input_tokens": "Tokens in", "output_tokens": "Tokens out",
+                "cost_usd": st.column_config.NumberColumn("Est. cost", format="$%.4f",
+                                                          help="Estimate at standard paid rates, not an invoice. "
+                                                               "Blank: no price list for the model"),
+                "cost_note": "How to read the cost",
                 "latency_ms": st.column_config.NumberColumn("Time (ms)"), "figures": "Figures",
                 "ungrounded": "Not found in data"})
 

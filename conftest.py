@@ -24,3 +24,32 @@ def never_touch_real_database(monkeypatch):
         return real_connect(path, *args, **kwargs)
 
     monkeypatch.setattr(db, "connect", guarded)
+
+
+@pytest.fixture(autouse=True)
+def never_call_a_real_ai_service(monkeypatch):
+    """Safety net: no test may reach Gemini or Anthropic. The Streamlit test runner reads the app's secrets
+    file, which can hold a real key, so client creation is blocked at two levels: the app's own factories
+    (assistant.make_provider, assistant.make_client) and the SDK constructors themselves
+    (google.genai.Client, anthropic.Anthropic and anthropic.AsyncAnthropic). A test that needs an answer
+    passes a scripted fake client to a provider class instead."""
+    import assistant
+
+    def blocked(*_a, **_k):
+        raise RuntimeError("A test tried to create a real AI client. Use a scripted fake provider instead.")
+
+    monkeypatch.setattr(assistant, "make_provider", blocked)
+    monkeypatch.setattr(assistant, "make_client", blocked)
+    try:
+        from google import genai
+        monkeypatch.setattr(genai, "Client", blocked)
+        import google.genai.client as genai_client
+        monkeypatch.setattr(genai_client, "Client", blocked)
+    except ImportError:
+        pass
+    try:
+        import anthropic
+        monkeypatch.setattr(anthropic, "Anthropic", blocked)
+        monkeypatch.setattr(anthropic, "AsyncAnthropic", blocked)
+    except ImportError:
+        pass

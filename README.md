@@ -25,7 +25,9 @@ whether those decisions hold up. All data is synthetic and all amounts are in US
   weekly trends.
 - **Ask MedStock (AI).** An assistant that answers questions with the app's own numbers. It looks
   things up through read-only tools, so it can explain and advise but cannot change anything. Every
-  answer is logged with its cost and checked for figures that did not come from the data.
+  answer is logged with its provider, model, tokens and estimated cost and checked for figures that
+  did not come from the data. It runs on Google Gemini by default (free tier), with Anthropic Claude as
+  an option; the free tier is only for this fictional data.
 - **Sign-in.** The homepage is public. The demo itself is invite-only.
 
 ## What came from class and what I added
@@ -55,7 +57,7 @@ Everything below is my own research and design, beyond the course.
 | Lot recalls, vendor outages, backup vendors | Recalls & disruptions page |
 | KPI page with weekly trends | KPIs page |
 | Portfolio homepage and sign-in | Homepage |
-| AI assistant with read-only tools, audit log, spending cap and a check for made-up figures | Ask MedStock page |
+| AI assistant with read-only tools, a provider adapter (Gemini or Claude), audit log, usage caps and a check for made-up figures | Ask MedStock page |
 
 ## Running it locally
 
@@ -77,6 +79,10 @@ PBKDF2 hash of each password is stored. To add an account, run `.venv/bin/python
 and paste the line it prints into that file. On Streamlit Community Cloud, paste the same
 `[auth.users]` section into the app's Secrets settings. This is a simple gate for a demo, with no
 user roles or per-user audit trail.
+
+**Ask MedStock** needs `GEMINI_API_KEY = "your-key-here"` at the top of `.streamlit/secrets.toml`
+(on Streamlit Community Cloud: Manage app > Settings > Secrets). The rest of the app works without
+it. Provider, model and limits are optional settings described in [AI Design](docs/AI_DESIGN.md).
 
 **Tests:** `.venv/bin/python -m pytest`. The formula tests use the worked examples from the course
 as expected values, and every test runs on a temporary database.
