@@ -156,3 +156,59 @@ def test_password_hashing():
     assert pw not in stored and auth.check_password(pw, stored)
     assert not auth.check_password("Qz-secret?", stored) and not auth.check_password(pw, "garbage")
     assert auth.hash_password(pw) != stored                   # salted: same password, different hash
+
+
+# ---------------------------------------------------------------------------
+# Ask MedStock on the homepage
+# ---------------------------------------------------------------------------
+def homepage_html(at):
+    return " ".join(e.proto.body for e in at.get("html"))
+
+
+def test_homepage_stat_shows_read_only_ai_lookups(monkeypatch):
+    import assistant
+    import homepage
+    assert homepage.AI_LOOKUPS == len(assistant.TOOLS) == 7       # the stat matches the real tool list
+    assert not hasattr(homepage, "_test_count")
+    no_db(monkeypatch)
+    at = AppTest.from_file(str(APP), default_timeout=180)
+    at.run()
+    html = homepage_html(at)
+    assert "<b>7</b>" in html and "Read-only AI lookups" in html
+    assert "Automated tests" not in html
+
+
+def test_homepage_introduces_ask_medstock_honestly(monkeypatch):
+    no_db(monkeypatch)
+    at = AppTest.from_file(str(APP), default_timeout=180)
+    at.run()
+    html = homepage_html(at)
+    assert 'id="ask"' in html and "Ask a question, get an answer from the data" in html
+    assert "read-only" in html.lower() and "Gemini" in html and "fictional" in html
+    for q in ["Which Vital items are most at risk of running out?", "Are any vendors disrupted or late right now?"]:
+        assert q in html
+    assert "autonomous" not in html.lower()                       # never described as autonomous
+    assert "Coming later" in html                                   # approval-based actions are future work
+    assert at.button(key="open_ask").label == "Sign in to try Ask MedStock"
+
+
+def test_ask_cta_signed_out_goes_through_sign_in_to_ask_medstock(home_to_demo):
+    at = home_to_demo
+    at.button(key="open_ask").click().run()
+    assert at.session_state["view"] == "login" and at.session_state["page"] == "Ask MedStock"
+    assert nav_count(at) == 0                                       # still locked
+    at.text_input(key="login_user").input("tester")
+    at.text_input(key="login_pass").input("s3cret")
+    at.button[[b.label for b in at.button].index("Sign in")].click().run()
+    assert not at.exception
+    assert at.session_state["view"] == "demo" and at.session_state["page"] == "Ask MedStock"
+
+
+def test_ask_cta_signed_in_opens_ask_medstock_directly(home_to_demo):
+    at = sign_in(home_to_demo)
+    at.button(key="back_home").click().run()
+    assert at.button(key="open_ask").label == "Open Ask MedStock"
+    at.button(key="open_ask").click().run()
+    assert not at.exception
+    assert at.session_state["view"] == "demo" and at.session_state["page"] == "Ask MedStock"
+    assert nav_count(at) == len(ui.PAGES)

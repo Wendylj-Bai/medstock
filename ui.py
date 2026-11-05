@@ -111,7 +111,7 @@ PAGES = [
 
 # Sidebar layout. Pages keep their internal titles (used in code and tests); some show a shorter
 # menu label. Every page in PAGES that is not a main page is listed under "More".
-MAIN_PAGES = ["Dashboard", "Inventory", "Purchasing", "Forecast", "Recalls & disruptions", "KPIs"]
+MAIN_PAGES = ["Dashboard", "Inventory", "Purchasing", "Forecast", "Recalls & disruptions", "KPIs", "Ask MedStock"]
 NAV_LABELS = {"Recalls & disruptions": "Alerts", "KPIs": "Reports"}
 MORE_PAGES = [t for t, _, _ in PAGES if t not in MAIN_PAGES]
 
@@ -171,6 +171,7 @@ APP_CSS = """
   align-items:center;justify-content:center;padding:0 .35rem;}
 [data-testid="stSidebar"] [class*="st-key-nav_"]{margin-bottom:-.55rem;}
 .st-key-nav_menu, .st-key-nav_more{gap:.15rem;}
+[data-testid="stSidebar"] .st-key-nav_menu{margin-bottom:0;}   /* room between the last item's highlight and More */
 .ms-menu-label{color:#7A7F99;font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin:.2rem 0 .1rem .55rem;}
 
 /* dashboard cards and charts */

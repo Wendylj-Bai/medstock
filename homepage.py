@@ -53,12 +53,6 @@ _TOOLS = [
     ("calculator", "Calculators", "EOQ, safety stock and the newsvendor model, with the math shown."),
 ]
 
-def _test_count():
-    """Counted from the test files, so the homepage number never goes stale."""
-    files = Path(__file__).parent.glob("test_*.py")
-    return sum(f.read_text(encoding="utf-8").count("\ndef test_") for f in files)
-
-
 def _item_count():
     """Counted from the sample catalog, so the homepage never goes stale (no database access here)."""
     f = Path(__file__).parent / "data" / "items.csv"
@@ -66,9 +60,10 @@ def _item_count():
 
 
 ITEM_COUNT = _item_count()
+AI_LOOKUPS = 7   # Ask MedStock's read-only tools; test_homepage checks this matches assistant.TOOLS
 
 _STATS = [("box", str(ITEM_COUNT), "Medical supplies"), ("users", "4", "Fictional vendors"),
-          ("wrench", str(len(ui.PAGES)), "Planning tools"), ("file", str(_test_count()), "Automated tests")]
+          ("wrench", str(len(ui.PAGES)), "Planning tools"), ("search", str(AI_LOOKUPS), "Read-only AI lookups")]
 
 _PROBLEMS = [
     ("Running out", "Critical items like IV fluids and insulin can't wait for a late delivery."),
@@ -104,15 +99,31 @@ _EXTENSIONS = [
     ("Simulation clock", "Generates daily demand and vendor behavior, so a reorder policy can be tested over weeks in a few seconds."),
     ("Supply risk", "Lot recalls, vendor outages and switching to a backup vendor."),
     ("Reporting", "The KPI page, weekly trends, forecast backtesting, sign-in and this homepage."),
-    ("AI assistant", "Ask MedStock answers questions through read-only tools. Every answer is logged with its cost and checked for figures that did not come from the data."),
+    ("AI assistant", "Ask MedStock, a Gemini-powered, read-only assistant. It answers questions by looking up MedStock's own data with seven tools, checks every figure against what it looked up, and logs every answer."),
 ]
 
-_STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly"]
+_STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly", "Gemini API"]
+
+# Ask MedStock on the homepage: what you can ask, and what it does and does not do
+ASK_QUESTIONS = [
+    "Which Vital items are most at risk of running out?",
+    "What should I order today, and why?",
+    "Are any vendors disrupted or late right now?",
+    "How are we doing on fill rate and waste over the last 90 days?",
+]
+_ASK_FACTS = [
+    ("search", "Looks it up, then answers.", "It checks the reorder plan, item details, KPIs, supply risks, purchase "
+     "orders and lot history, often several of them, before it answers."),
+    ("check", "Every figure is checked.", "Numbers in an answer are compared with what the lookups returned, and "
+     "every answer is logged with the lookups behind it."),
+    ("alert", "Read-only.", "It explains and advises. It cannot place orders, change stock or resolve alerts; it "
+     "tells you which page does that."),
+]
 
 _NEXT = [
     ("Policy comparison", "Running two inventory policies over the same simulated period and comparing the results."),
     ("Ward supply rooms", "Par levels and transfers between the central storeroom and the wards."),
-    ("AI agents", "A buyer agent that proposes orders for approval, a disruption responder and a policy analyst, measured in the simulator."),
+    ("Coming later: AI suggestions you approve", "Ask MedStock drafting order proposals and disruption responses for a person to review and approve. Nothing would change without that approval."),
 ]
 
 # ---------------------------------------------------------------------------
@@ -145,7 +156,8 @@ CSS = """
 .ms-brand{display:flex !important;align-items:center;gap:.6rem;font-weight:800;font-size:1.35rem;color:var(--ms-navy) !important;}
 .ms-brand img{width:38px;height:38px;}
 .ms-links{display:flex;gap:1.5rem;margin-left:auto;}
-.ms-links a{color:var(--ms-text) !important;font-size:.92rem;font-weight:500;padding:.3rem 0;}
+.ms-links a{color:var(--ms-text) !important;font-size:.92rem;font-weight:500;padding:.3rem 0;white-space:nowrap;}
+@media (max-width:1100px){.ms-links{display:none;} .ms-nav .ms-btn-out{margin-left:auto;}}
 .ms-links a.on{color:var(--ms-violet) !important;border-bottom:2px solid var(--ms-violet);}
 .ms-links a:hover{color:var(--ms-violet) !important;}
 .ms-btn-out{display:inline-flex;align-items:center;gap:.45rem;border:1.5px solid var(--ms-violet);color:var(--ms-violet) !important;
@@ -176,7 +188,7 @@ CSS = """
 /* sections */
 .ms-sec{margin:4.2rem 0 0;}
 .ms-eyebrow{color:var(--ms-violet);font-size:.78rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin:0 0 .4rem;}
-.ms-sec h2{font-size:clamp(1.55rem,2.6vw,2.05rem);font-weight:750;}
+.ms-sec h2{font-size:clamp(1.55rem,2.6vw,2.05rem);font-weight:750;line-height:1.2;}
 .ms-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:1.4rem;}
 .ms-link{color:var(--ms-violet) !important;font-weight:600;font-size:.92rem;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;}
 .ms-intro{max-width:70ch;margin:.6rem 0 0;}
@@ -266,6 +278,13 @@ CSS = """
 .ms-bottom{display:flex;justify-content:space-between;border-top:1px solid var(--ms-line);margin:2rem 0 1rem;padding:1rem .4rem 0;
   color:var(--ms-muted);font-size:.82rem;}
 
+/* Ask MedStock section */
+.ms-ask-card{background:#fff;border:1px solid var(--ms-line);border-radius:20px;padding:1.4rem 1.5rem;box-shadow:0 6px 18px rgba(43,32,120,.05);}
+.ms-ask-card .lbl{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ms-muted);margin:0 0 .6rem;}
+.ms-q{display:flex;gap:.6rem;align-items:flex-start;background:var(--ms-lav-2);color:var(--ms-navy);border-radius:14px 14px 14px 4px;
+  padding:.6rem .85rem;margin:.5rem 0;font-size:.92rem;line-height:1.45;}
+.ms-q img{flex:none;margin-top:.15rem;}
+.ms-ask-note{font-size:.82rem;color:var(--ms-muted);margin:.9rem 0 0;}
 @media (max-width:900px){
   .ms-links{display:none;} .ms-nav .ms-btn-out{margin-left:auto;}
   .ms-high,.ms-stats{grid-template-columns:1fr 1fr;} .ms-stats>div{border-left:none;padding:.6rem 0;}
@@ -290,7 +309,7 @@ def _top():
   <nav class="ms-nav" id="top">
     <a class="ms-brand" href="#top"><img src="{LOGO}" alt="">MedStock</a>
     <div class="ms-links">
-      <a class="on" href="#top">Home</a><a href="#what">What it does</a><a href="#how">How it works</a>
+      <a class="on" href="#top">Home</a><a href="#what">What it does</a><a href="#ask">Ask MedStock</a><a href="#how">How it works</a>
       <a href="#course">Course and my work</a><a href="#next">Roadmap</a>
     </div>
     <a class="ms-btn-out" href="{DEMO_LINK}" target="_self">Open the demo {icon('arrow', size=16)}</a>
@@ -361,6 +380,7 @@ def _body():
   </section>
 
   <div class="ms-stats">{stats}</div>
+<!--ASK-->
 
   <section class="ms-sec" id="how">
     <div class="ms-two">
@@ -430,7 +450,32 @@ def _body():
 </div>"""
 
 
+def _ask_section():
+    facts = "".join(f'<li>{icon(ic, size=18)}<span><strong>{_esc(t)}</strong> {_esc(d)}</span></li>'
+                    for ic, t, d in _ASK_FACTS)
+    questions = "".join(f'<div class="ms-q">{icon("sparkles", size=16)}<span>{_esc(q)}</span></div>'
+                        for q in ASK_QUESTIONS)
+    return f"""<div class="ms"><section class="ms-sec" id="ask">
+    <div class="ms-two">
+      <div><p class="ms-eyebrow">Ask MedStock: AI assistant</p><h2>Ask a question, get an answer from the data</h2>
+        <p class="ms-intro">Ask about stock risks, what to reorder, Vital items, vendor disruptions, recalls or
+           performance. Ask MedStock is a Gemini-powered assistant that uses read-only tools to look the answer up
+           in MedStock's own fictional data, then shows what it checked.</p>
+        <ul class="ms-list">{facts}</ul></div>
+      <div class="ms-ask-card"><p class="lbl">Questions you can ask</p>{questions}
+        <p class="ms-ask-note">Answers come only from MedStock's fictional data. Don't enter real patient, hospital or
+           personal information.</p></div>
+    </div>
+  </section></div>"""
+
+
 def open_demo():
+    st.session_state["view"] = "demo" if st.session_state.get("user") else "login"
+
+
+def open_ask():
+    """Ask MedStock from the homepage: straight there when signed in, otherwise via sign-in."""
+    st.session_state["page"] = "Ask MedStock"
     st.session_state["view"] = "demo" if st.session_state.get("user") else "login"
 
 
@@ -448,7 +493,15 @@ def render_homepage():
     with right:
         st.html(_hero_pic())
     before, after = _body().split("<!--DIAGRAM-->")
-    st.html(before + "</div>")
+    top, middle = before.split("<!--ASK-->")
+    st.html(top + "</div>")
+    st.html(_ask_section())
+    signed_in = bool(st.session_state.get("user"))
+    with st.container(horizontal=True, key="ask_cta", vertical_alignment="center"):
+        st.button("Open Ask MedStock" if signed_in else "Sign in to try Ask MedStock", key="open_ask",
+                  icon=":material/auto_awesome:", on_click=open_ask, type="primary")
+        st.caption("You're signed in." if signed_in else "Invite-only, like the rest of the demo.")
+    st.html('<div class="ms">' + middle + "</div>")
     st.html(f"""<div class="ms"><section class="ms-sec" id="flow">
       <div class="ms-head"><div><p class="ms-eyebrow">Workflow</p><h2>How a day flows through MedStock</h2>
         <p class="ms-intro">From a ward's request to a delivery at the dock, plus the two things that can

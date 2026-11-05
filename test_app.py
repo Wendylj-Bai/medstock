@@ -355,6 +355,20 @@ def test_every_page_is_reachable_from_main_menu_or_more(app):
     assert set(ui.MAIN_PAGES) | set(ui.MORE_PAGES) == {t for t, _, _ in ui.PAGES}
 
 
+def test_main_menu_order_puts_ask_medstock_after_reports(app):
+    at, _ = app
+    assert [ui.nav_label(t) for t in ui.MAIN_PAGES] == [
+        "Dashboard", "Inventory", "Purchasing", "Forecast", "Alerts", "Reports", "Ask MedStock"]
+    assert "Ask MedStock" not in ui.MORE_PAGES
+    labels = [b.label for b in at.sidebar.button]
+    assert labels.count("Ask MedStock") == 1                      # exactly once in the sidebar
+    assert labels.index("Ask MedStock") == labels.index("Reports") + 1
+    main_keys = [b.key for b in at.sidebar.button if b.key in {ui.nav_key(t) for t in ui.MAIN_PAGES}]
+    assert main_keys == [ui.nav_key(t) for t in ui.MAIN_PAGES]   # drawn in that order
+    at.sidebar.button(key=ui.nav_key("Ask MedStock")).click().run()
+    assert not at.exception and at.session_state["page"] == "Ask MedStock"
+
+
 # ---------------------------------------------------------------------------
 # Help, page links and confirmations (audit Phase 0)
 # ---------------------------------------------------------------------------
@@ -746,3 +760,43 @@ def test_the_bell_is_the_only_notification_badge(app):
     at.run()
     assert sidebar_badges(at) == [("bell_btn", "2")]              # one badge, on the bell, nothing on Alerts
     assert at.button(key="bell_btn").label == "Open alerts, 2 active"
+
+
+# ---------------------------------------------------------------------------
+# Ask MedStock: shortcuts and wording
+# ---------------------------------------------------------------------------
+def test_dashboard_has_one_compact_ask_medstock_shortcut(app):
+    at, _ = app
+    asks = [b for b in at.main.button if b.key == "dash_ask"]
+    assert len(asks) == 1 and asks[0].label == "Open Ask MedStock"
+    assert not at.main.chat_input                                   # no second copy of the assistant
+    css = " ".join(e.proto.body for e in at.get("html"))
+    assert "Ask a question about today" in css
+    at.button(key="dash_ask").click().run()
+    assert not at.exception and at.session_state["page"] == "Ask MedStock"
+
+
+def test_help_explains_what_ask_medstock_can_and_cannot_do(app):
+    at, _ = app
+    open_page(at, "Help")
+    text = " ".join(m.value for m in at.main.markdown)
+    assert "read-only" in text and "cannot place or approve orders" in text
+    for label in ["Item search", "Reorder plan", "Item detail", "KPIs", "Supply risks", "Purchase orders", "Lot trace"]:
+        assert f"| {label} |" in text
+    assert "Coming later" in text and "autonomous" not in text.lower()
+    at.button(key="help_go_ask").click().run()
+    assert at.session_state["page"] == "Ask MedStock"
+
+
+def test_ask_medstock_page_leads_with_value_and_keeps_safeguards(app, monkeypatch):
+    import assistant
+    at, _ = app
+    monkeypatch.setattr(assistant, "get_api_key", lambda *a, **k: "test-key-not-real")   # never used: no question asked
+    main = open_page(at, "Ask MedStock")
+    assert not at.exception
+    assert main.caption[0].value.startswith("Ask about stock risks")                     # value first
+    captions = " ".join(c.value for c in main.caption)
+    assert "cannot place orders" in captions and "several lookups" in captions
+    assert "gemini-3.5-flash-lite" in captions and "fictional demo data" in captions      # model and privacy kept
+    assert "autonomous" not in captions.lower()
+    assert len([b for b in main.button if (b.key or "").startswith("ai_example_")]) == len(assistant.EXAMPLE_QUESTIONS)

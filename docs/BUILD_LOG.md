@@ -339,3 +339,22 @@ already includes the cached tokens, so they were billed at the normal input rate
 reads, and the cache rate was wrong ($0.30 instead of $0.03). Now cached tokens are taken out of normal
 input and priced once at $0.03 per million. A test with 6,000 cached tokens out of 10,000 checks the
 exact amount ($0.00263).
+
+## 20. Introducing Ask MedStock
+
+**Date:** November 4, 2026
+
+**Built:** Ask MedStock now has a place on the homepage, a slim card on the Dashboard and its own tab
+in Help. The homepage section explains what you can ask, shows four example questions and has one
+button: "Open Ask MedStock" when you are signed in, "Sign in to try Ask MedStock" when you are not
+(signing in then lands on Ask MedStock). The Ask MedStock page now starts with what it is for; the
+privacy note, provider and model, read-only limits, audit log and cost estimate wording stay. The Help
+tab lists the seven read-only lookups, what it cannot do, privacy and usage limits. Ask MedStock also
+moved out of "More" into the main menu, after Reports.
+
+**Problem:** "AI agent" invites people to assume it can act. It cannot: it reads data and answers.
+
+**Decision:** Every page and document calls it a Gemini-powered, tool-using, read-only assistant and
+says it cannot place orders, change stock, resolve alerts or carry out its suggestions. Approval-based
+features are labelled "Coming later". Tests check the wording (including that "autonomous" never
+appears), the signed-in and signed-out homepage buttons, the Dashboard shortcut and the Help tab.

@@ -23,11 +23,13 @@ whether those decisions hold up. All data is synthetic and all amounts are in US
   Take a vendor offline and new orders go to each item's backup vendor at a higher price.
 - **KPIs.** Fill rate, stockouts, inventory turns, days on hand, waste and on-time delivery, with
   weekly trends.
-- **Ask MedStock (AI).** An assistant that answers questions with the app's own numbers. It looks
-  things up through read-only tools, so it can explain and advise but cannot change anything. Every
-  answer is logged with its provider, model, tokens and estimated cost and checked for figures that
-  did not come from the data. It runs on Google Gemini by default (free tier), with Anthropic Claude as
-  an option; the free tier is only for this fictional data.
+- **Ask MedStock (AI assistant).** A Gemini-powered, tool-using, read-only assistant. Ask about stock
+  risks, what to reorder, Vital items, vendor disruptions, recalls or performance, and it looks the answer
+  up in MedStock's own data with seven read-only tools, often several per question. It explains and
+  advises but cannot place orders, change stock, resolve alerts or carry out its suggestions. Every figure
+  is checked against what it looked up, and every answer is logged with its provider, model, lookups,
+  tokens and estimated cost. It runs on Google Gemini by default, with Anthropic Claude as an option; the
+  free tier is only for this fictional data. Open it from the homepage, the Dashboard card or the menu.
 - **Sign-in.** The homepage is public. The demo itself is invite-only.
 
 ## What came from class and what I added
@@ -92,7 +94,7 @@ as expected values, and every test runs on a temporary database.
 - [User Guide](docs/USER_GUIDE.md): how to use the app day to day (also in the app's Help page)
 - [How It Works](docs/HOW_IT_WORKS.md): formulas, data model and design decisions
 - [Build Log](docs/BUILD_LOG.md): how the project was built, what broke and what I changed
-- [AI Design](docs/AI_DESIGN.md): how AI agents are added, with guardrails and an evaluation plan
+- [AI Design](docs/AI_DESIGN.md): how Ask MedStock works, its guardrails, and the approval-based features planned next
 - [AGENTS.md](AGENTS.md): guide for collaborators and AI coding assistants (architecture, rules, roadmap)
 
 ## Files
@@ -123,5 +125,6 @@ MedStock is still growing. Planned next steps:
 
 - Comparing two inventory policies side by side over the same simulated period
 - Ward supply rooms with par levels, on top of the central storeroom
-- AI agents beyond Ask MedStock: a buyer agent that proposes orders for approval, a disruption
-  responder and a policy analyst (see [docs/AI_DESIGN.md](docs/AI_DESIGN.md))
+- Coming later: AI suggestions you approve. Ask MedStock drafting order proposals and disruption
+  responses for a person to review; nothing would change without that approval (see
+  [docs/AI_DESIGN.md](docs/AI_DESIGN.md))

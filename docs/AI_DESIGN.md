@@ -4,6 +4,11 @@ Design document, v0.2. Author: Wendyl Jaca. Status: phase 1 built (Ask MedStock)
 
 ## Summary
 
+**Today:** Ask MedStock is a Gemini-powered, tool-using, **read-only** assistant. It answers questions by
+calling seven read-only tools, often several per question, and cannot place orders, change stock,
+resolve alerts or carry out its suggestions. It is not an autonomous agent. The approval-based features
+below are planned (marked "Coming later") and are not available.
+
 MedStock already has a deterministic planning engine, a full stock ledger and a simulation clock.
 AI agents are added on top of that engine. They read the app's numbers through tools, propose
 actions and explain their reasoning. They never calculate reorder points themselves and never
@@ -117,11 +122,13 @@ instructions planted in vendor notes.
 
 ## Delivery plan
 
-1. **Foundation and Ask MedStock:** built.
-2. **Proposal queue and buyer agent:** daily order proposals with written justifications, approved on a new page.
-3. **Disruption responder:** runs on a recall or vendor outage; proposes replacement orders and ward notices.
-4. **Scenario comparison, then the policy analyst:** the agent runs two policies over the same period and recommends one.
-5. **Agent scorecard:** a page with the evaluation results.
+1. **Foundation and Ask MedStock:** built and live (read-only).
+2. **Coming later: proposal queue and buyer assistant.** Daily order proposals with written justifications, approved by a person on a new page.
+3. **Coming later: disruption responder.** On a recall or vendor outage, proposes replacement orders and ward notices for a person to approve.
+4. **Coming later: scenario comparison, then a policy analyst.** Runs two policies over the same period and recommends one.
+5. **Coming later: agent scorecard.** A page with the evaluation results.
+
+None of these will change data on their own: every proposal waits for a person to approve it.
 
 ## Open questions
 

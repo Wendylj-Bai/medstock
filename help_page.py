@@ -9,6 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 
+import assistant
 import ui
 
 GUIDE = Path(__file__).parent / "docs" / "USER_GUIDE.md"
@@ -25,7 +26,7 @@ def render(open_page):
     st.caption("How to use MedStock, what the statuses mean, and how to restart the demo. MedStock is a "
                "learning project with fictional data; it is not clinical software.")
 
-    tabs = st.tabs(["Getting started", "Statuses", "Daily workflows", "Simulation", "Formulas",
+    tabs = st.tabs(["Getting started", "Statuses", "Daily workflows", "Ask MedStock", "Simulation", "Formulas",
                     "About the data", "Reset the demo"])
 
     with tabs[0]:
@@ -38,7 +39,9 @@ def render(open_page):
             "3. **Purchasing** holds purchase orders. Drafts wait for you to review and approve them; nothing "
             "is sent to a vendor without your approval.\n"
             "4. **Planning settings** (sidebar) holds the simulation clock and the policy settings.\n"
-            "5. Everything else (Stock movements, Expiry, Item detail, History, ABC-VED, Calculators) is under "
+            "5. **Ask MedStock** (in the menu, or the card on the Dashboard) answers questions about the data "
+            "in plain English. It can only read.\n"
+            "6. Everything else (Stock movements, Expiry, Item detail, History, ABC-VED, Calculators) is under "
             "**More** in the sidebar.")
         st.markdown("**Good to know**")
         st.markdown(
@@ -113,6 +116,49 @@ def render(open_page):
             "shows what the system expected and corrects any difference.")
 
     with tabs[3]:
+        st.subheader("Ask MedStock: the AI assistant")
+        st.markdown(
+            "Ask MedStock answers questions in plain English using MedStock's own fictional data. It is a "
+            "Gemini-powered, **read-only** assistant: it looks things up with the tools below, often several of "
+            "them, and then answers with the figures it found. Under each answer you can see what it looked up, "
+            "and any figure it could not find in that data is flagged.")
+        st.markdown("**Questions it handles well**")
+        st.markdown("\n".join(f"- {q}" for q in assistant.EXAMPLE_QUESTIONS))
+        st.markdown("**Its seven read-only lookups**")
+        st.markdown(
+            "| Lookup | What it reads |\n|---|---|\n"
+            "| Item search | Finds items by name, ID or category |\n"
+            "| Reorder plan | Status, availability, stock, reorder point and suggested order for each item |\n"
+            "| Item detail | One item's demand, lead time, safety stock, lots and open orders |\n"
+            "| KPIs | Fill rate, stockouts, inventory value, turns, waste and vendor performance |\n"
+            "| Supply risks | Vendor disruptions, recent recalls, expiring lots and late orders |\n"
+            "| Purchase orders | Orders with their stage, vendor, value and dates |\n"
+            "| Lot trace | Every movement of one lot, for recalls |")
+        st.markdown("**What it cannot do**")
+        st.markdown(
+            "- It cannot place or approve orders, issue or receive stock, write anything off, resolve alerts or "
+            "change settings. It cannot carry out its own suggestions; it tells you which page does that.\n"
+            "- It does not do its own inventory math: reorder points, forecasts and KPIs come from MedStock's "
+            "engine.\n"
+            "- It does not search the web. It only knows what MedStock's data shows today.")
+        st.markdown("**Privacy and usage limits**")
+        st.markdown(
+            "- It runs on Google Gemini. On Gemini's free tier, Google may use what you type to improve its "
+            "products, so use it only with this fictional demo, never with real patient, hospital, "
+            "vendor-confidential or personal information.\n"
+            "- Each account has a daily question limit and a daily limit on estimated spending. The spending "
+            "estimate uses Gemini's paid rates and is checked before each new question; MedStock cannot see "
+            "whether the key is billed, so this is an estimate, not an invoice.\n"
+            "- Every answer is logged with its provider, model, lookups, tokens and estimated cost "
+            "(Ask MedStock > Audit log and usage).")
+        st.markdown("**Coming later**")
+        st.caption("Suggestions you approve: Ask MedStock drafting order proposals or disruption responses for a "
+                   "person to review and approve. This is not available yet, and nothing would change without "
+                   "that approval.")
+        st.button("Open Ask MedStock", key="help_go_ask", icon=":material/auto_awesome:", on_click=open_page,
+                  args=("Ask MedStock",))
+
+    with tabs[4]:
         st.subheader("The simulation clock")
         st.markdown(
             "Open **Planning settings** in the sidebar.\n\n"
@@ -125,7 +171,7 @@ def render(open_page):
             "On the **Alerts** page you can also start a recall or a vendor disruption yourself, or simulate a "
             "random one. Each is a fictional event, and you confirm it before anything changes.")
 
-    with tabs[4]:
+    with tabs[5]:
         st.subheader("Formula glossary")
         st.caption("The formulas come from the course (slide numbers refer to the course deck). Item detail "
                    "shows each one worked out for a single item.")
@@ -141,7 +187,7 @@ def render(open_page):
             "| Newsvendor | P(D ≤ Q*) = Cu / (Cu + Co) | One-time order for short-lived stock (slides 217-231) |\n"
             "| MAD | average of the absolute forecast errors | How far off a forecast method is |")
 
-    with tabs[5]:
+    with tabs[6]:
         st.subheader("About the data")
         st.markdown(
             "MedStock is a supply chain portfolio and learning project. The hospital, its 150 items, the "
@@ -150,7 +196,7 @@ def render(open_page):
             "The app has not been validated for clinical use or real purchasing decisions. Treat its numbers as "
             "a demonstration of the methods, not as advice.")
 
-    with tabs[6]:
+    with tabs[7]:
         st.subheader("Reset or restart the demo")
         st.markdown(
             "- **Start over with fresh sample data**: open **Planning settings** in the sidebar, tick "

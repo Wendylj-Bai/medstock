@@ -328,10 +328,15 @@ st.html("<style>" + ui.nav_css(PAGE)                    # no count on the Alerts
 # Help page: the user guide (docs/USER_GUIDE.md), shown inside the app
 # ---------------------------------------------------------------------------
 if PAGE == "Ask MedStock":
-    st.header("Ask MedStock")
-    st.caption("An AI assistant that answers with MedStock's own numbers. It looks things up with read-only "
-               "tools, so it can explain and advise but cannot order, issue or change anything. All data is "
-               "fictional.")
+    st.header("Ask MedStock")             # (this page is drawn before page_header() is defined below)
+    st.caption("Ask about stock risks, what to reorder, Vital items, vendor disruptions, recalls or performance, "
+               "and get an answer built from MedStock's own numbers.")
+    st.markdown(":violet-badge[:material/search: Looks it up first] "
+                ":violet-badge[:material/fact_check: Every figure checked] "
+                ":gray-badge[:material/lock: Read-only]")
+    st.caption("It may make several lookups before answering, and shows what it checked under each answer. It "
+               "explains and advises, but it cannot place orders, change stock, resolve alerts or carry out its "
+               "suggestions; it tells you which page does that. All data is fictional.")
     try:
         ai_cfg = assistant.settings(st.secrets)
         ai_key = assistant.get_api_key(st.secrets, ai_cfg["provider"])
@@ -349,13 +354,14 @@ if PAGE == "Ask MedStock":
     def ai_ask(q):
         st.session_state["ai_pending"] = q
 
-    st.caption(f":material/shield: Answers come from {ai_name} ({ai_cfg['model']}) using only MedStock's tools. "
+    st.caption(f":material/shield: Powered by {ai_name} ({ai_cfg['model']}), using only MedStock's tools. "
                + ("On Gemini's free tier, Google may use what you type to improve its products. " if ai_free else "")
                + "Use it only with this fictional demo data, never with real patient, hospital, vendor-confidential "
                  "or personal information.")
     if not ai_key:
         key_name = assistant.KEY_NAMES[ai_cfg["provider"]]
-        st.info(f"Ask MedStock needs a {ai_name} API key. Add a line `{key_name} = \"...\"` to "
+        st.info(f"Ask MedStock is not switched on for this server yet. To turn it on, the app owner adds a "
+                f"{ai_name} API key: a line `{key_name} = \"...\"` in "
                 "`.streamlit/secrets.toml` (on Streamlit Cloud: Manage app > Settings > Secrets), then reload. "
                 "The key stays in secrets and is never saved in the code. Everything else in MedStock works "
                 "without it.")
@@ -384,9 +390,10 @@ if PAGE == "Ask MedStock":
 
     if not st.session_state["ai_chat"]:
         st.markdown("**Try a question:**")
-        ex = st.columns(len(assistant.EXAMPLE_QUESTIONS))
-        for i, q in enumerate(assistant.EXAMPLE_QUESTIONS):
-            ex[i].button(q, key=f"ai_example_{i}", on_click=ai_ask, args=(q,), disabled=not ai_key, width="stretch")
+        with st.container(horizontal=True, wrap=True, gap="small", key="ai_examples"):   # full questions, wrapping
+            for i, q in enumerate(assistant.EXAMPLE_QUESTIONS):
+                st.button(q, key=f"ai_example_{i}", on_click=ai_ask, args=(q,), disabled=not ai_key,
+                          icon=":material/chat_bubble:")
 
     typed = st.chat_input("Ask about stock, orders, vendors, recalls or KPIs", disabled=not ai_key, key="ai_input")
     question = typed or st.session_state.pop("ai_pending", None)
@@ -729,6 +736,15 @@ if PAGE == "Dashboard":
     alert_card(a3, "supply_vendors", "Vendor delays", "Late deliveries, outages and recalls", "truck", "red",
                not vend_parts, " ".join(vend_parts) if vend_parts else "All open orders are on schedule and no "
                "vendor is disrupted.", v_action, page=v_page, po=v_po)
+
+    # Ask MedStock shortcut: one slim line, not a second copy of the assistant
+    with st.container(border=True, key="card_ask"):
+        q1, q2 = st.columns([4, 1.25], vertical_alignment="center")
+        q1.html(f'<div class="ms-alert"><img src="{ui.tile_uri("sparkles", "violet")}" width="36" height="36" alt="">'
+                '<div><b>Ask MedStock</b><span>Ask a question about today\'s stock, orders or supply risks. '
+                'It answers from MedStock\'s data with read-only lookups.</span></div></div>')
+        q2.button("Open Ask MedStock", key="dash_ask", icon=":material/auto_awesome:", on_click=open_page,
+                  args=("Ask MedStock",), width="stretch")
 
     # 5. Analytics: two rows of two equal cards, same height, titles and legend placement
     st.subheader("Analytics")

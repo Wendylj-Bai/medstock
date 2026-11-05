@@ -25,8 +25,8 @@ Then open **http://localhost:8501** in your browser. Leave the terminal window o
 
 ## 2. What's on the screen
 
-The sidebar on the left has four parts: the **menu** with the six main pages (Dashboard, Inventory,
-Purchasing, Forecast, Alerts and Reports), **More** with every other page, **Planning settings**
+The sidebar on the left has four parts: the **menu** with the seven main pages (Dashboard, Inventory,
+Purchasing, Forecast, Alerts, Reports and Ask MedStock), **More** with every other page, **Planning settings**
 (the simulation clock and the hospital policy settings: how much protection each type of item gets
 and how demand is forecast), and **Project home / Sign out** at the bottom. "More" and "Planning
 settings" start collapsed; click them to open. In the menu, **Alerts** is the Recalls & disruptions
@@ -345,16 +345,27 @@ Fill rate and inventory value usually move in opposite directions: that trade-of
 **Item detail** > choose the item > open **Show the calculation**. Every number is shown step by step.
 
 ### 6.12 Ask MedStock (AI assistant)
-**Ask MedStock** is under **More** in the menu. Type a question, or click one of the example questions,
-for example "What should I order today, and why?". The assistant looks the answer up in MedStock's own
-data and shows, under each answer, how many lookups it made, how long it took, how many tokens it used,
+**Ask MedStock** is a Gemini-powered, read-only assistant. Open it from the **Ask MedStock** card on the
+Dashboard, from the menu, or from the homepage. Ask about stock risks, what to reorder, Vital
+items, vendor disruptions, recalls or performance, for example:
+
+- "Which Vital items are most at risk of running out?"
+- "What should I order today, and why?"
+- "Are any vendors disrupted or late right now?"
+- "How are we doing on fill rate and waste over the last 90 days?"
+
+It answers by looking things up with seven read-only tools (item search, reorder plan, item detail, KPIs,
+supply risks, purchase orders and lot trace), often several of them, before it replies. It shows, under
+each answer, how many lookups it made, how long it took, how many tokens it used,
 an **estimated** cost at the provider's standard paid rates, and whether every figure in the answer was
 found in the data. The estimate is not an invoice: MedStock cannot see whether the Gemini key belongs to
 a free-tier or a billed project. When the app is set up for the free tier, the page adds that the expected
 charge is $0 while the project stays within the free tier. The daily spending limit counts the estimate
 and is checked before each new question: once it is reached, no more questions are sent that day. The
 answer in progress when the limit is reached can take the total slightly over it. Open **What it looked up** to see each lookup.
-- It can only **read**. It cannot order, issue, receive or change settings; it tells you which page does that.
+- It can only **read**. It cannot place or approve orders, issue or receive stock, write anything off,
+  resolve alerts, change settings or carry out its own suggestions; it tells you which page does that.
+- It does not do its own inventory math. Reorder points, forecasts and KPIs come from MedStock's engine.
 - It uses Google Gemini by default (the model is named above the chat). It does not search the web;
   it only uses MedStock's data.
 - **Privacy:** on Gemini's free tier, Google may use what you type to improve its products. Use it only
@@ -363,6 +374,8 @@ answer in progress when the limit is reached can take the total slightly over it
   model, tokens and estimated cost.
 - It needs a `GEMINI_API_KEY` in the app's secrets (see docs/AI_DESIGN.md). Each account has a daily
   question limit and a daily limit on estimated spending. Without a key, the page explains how to add one and everything else works.
+- **Coming later:** suggestions you approve, such as draft order proposals for a person to review. This
+  is not available yet.
 
 ---
 
