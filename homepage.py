@@ -12,6 +12,7 @@ import html
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 import ui
 
@@ -588,7 +589,7 @@ def render_homepage():
         st.caption("You're signed in." if signed_in else "Invite-only, like the rest of the demo.")
     st.html(_agentic_section())
     with st.container(key="agentic_frame"):
-        st.iframe("/" + IMG + "agentic-workflow.html?theme=light&embed=1", height=700)
+        components.iframe(IMG + "agentic-workflow.html?theme=light&embed=1", height=700)
     st.html('<div class="ms">' + middle + "</div>")
     st.html(f"""<div class="ms"><section class="ms-sec" id="flow">
       <div class="ms-head"><div><p class="ms-eyebrow">Workflow</p><h2>How a day flows through MedStock</h2>
@@ -597,5 +598,5 @@ def render_homepage():
         <a class="ms-link" href="{IMG}workflow.html?theme=light" target="_blank">Open full screen {icon('arrow', size=16)}</a></div>
     </section></div>""")
     with st.container(key="flow_frame"):
-        st.iframe("/" + IMG + "workflow.html?theme=light&embed=1", height=700)
+        components.iframe(IMG + "workflow.html?theme=light&embed=1", height=700)
     st.html('<div class="ms">' + after)

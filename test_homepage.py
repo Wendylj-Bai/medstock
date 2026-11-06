@@ -230,15 +230,20 @@ def test_homepage_presents_agentic_ai_as_built_and_planned(monkeypatch):
     assert "agentic-workflow.html?theme=light" in html
 
 
-def test_both_diagrams_load_as_urls_not_html_text(monkeypatch):
-    # st.iframe treats a string without a leading "/" or scheme as raw HTML, which shows the path as text
+def test_both_diagrams_load_from_the_apps_own_address(monkeypatch):
+    # On Streamlit Cloud the app lives under /~/+/, so the frames must use a relative path
+    # ("app/static/...") that resolves inside it. A root path ("/app/static/...") leaves the app and gets a
+    # 303 redirect, so the diagram never loads. st.iframe would also show a relative path as text, which is
+    # why the frames use components.iframe.
+    import homepage
     no_db(monkeypatch)
     at = AppTest.from_file(str(APP), default_timeout=180)
     at.run()
-    srcs = [e.proto.src for e in at.get("iframe")]
-    assert srcs == ["/app/static/home/agentic-workflow.html?theme=light&embed=1",
-                    "/app/static/home/workflow.html?theme=light&embed=1"]
-    assert all(not e.proto.srcdoc for e in at.get("iframe"))
+    frames = at.get("iframe")
+    assert [e.proto.src for e in frames] == ["app/static/home/agentic-workflow.html?theme=light&embed=1",
+                                             "app/static/home/workflow.html?theme=light&embed=1"]
+    assert all(not e.proto.src.startswith("/") and not e.proto.srcdoc for e in frames)
+    assert homepage.IMG == "app/static/home/"
     root = Path(__file__).parent / "static/home"
     assert (root / "agentic-workflow.html").is_file() and (root / "workflow.html").is_file()
 
