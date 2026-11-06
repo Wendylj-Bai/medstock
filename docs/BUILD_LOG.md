@@ -396,3 +396,22 @@ where people expect it: "Late" is about the promised date, not a separate stage.
 **Decision:** Late keeps MedStock's existing rule (sent, confirmed or shipped and past the promised
 date), so it overlaps With vendor and In transit on purpose; the tests check that overlap. The
 active card's ring no longer changes its size, so all five cards stay the same height.
+
+## 23. Drafting orders from Inventory > Order now
+
+**Date:** November 5, 2026
+
+**Built:** The Inventory page's **Order now** view now has the same **Prepare N draft purchase
+orders, one per vendor** button as the Dashboard. It drafts every eligible Order now item, skips
+items already in a draft, and lands on **Purchasing > Drafts** with the first new draft open. It
+never approves or sends anything.
+
+**Problem:** Inventory > Order now showed exactly the items to order, but the only way to order them
+was a link back to the Dashboard. The shortcut was missing where the list actually is.
+
+**Decision:** I moved the Dashboard's suggestion math into one shared helper, so both pages show the
+same vendors, items and value and call the same draft step. I also made that draft step one database
+transaction: the check for items already in a draft and the new drafts are saved together, so a
+double click or the same button pressed in a second tab adds nothing the second time. In the browser
+I double-clicked the button on a throwaway copy of the data: it made exactly one set of drafts, with
+no item drafted twice and nothing sent. The full suite passed with 189 tests.

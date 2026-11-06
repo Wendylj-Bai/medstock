@@ -269,24 +269,29 @@ def draft_suggested_orders(conn, plan, origin="Dashboard", on_date=None):
     """One draft PO per vendor for every 🔴 item that is not already ordered or drafted.
 
     Quantities come from the reorder plan (order up to R + Q). Items whose primary vendor is
-    disrupted go to their backup vendor. Returns the new PO numbers.
+    disrupted go to their backup vendor. Returns the new PO numbers. Only creates drafts: nothing is
+    approved or sent. The check for items already in a draft and the new drafts are one transaction
+    (BEGIN IMMEDIATE), so a repeated click, even from a second tab, finds the first click's drafts and
+    adds nothing.
     """
-    drafted = items_in_drafts(conn)
-    todo = plan[plan["status"].str.startswith("🔴") & (plan["order_qty"] > 0) & ~plan["item_id"].isin(drafted)]
     on_date = on_date or db.today(conn)
-    if todo.empty:
-        return []
-    todo = todo.drop(columns=["order_vendor", "vendor_reason"], errors="ignore").join(order_vendors(conn, todo, on_date))
-    made = []
-    for supplier, group in todo.groupby("order_vendor"):
-        if active_outage(conn, supplier, on_date):
-            continue                     # primary and backup both down: nothing can be ordered right now
-        need_by = on_date + timedelta(days=VENDORS[supplier]["quoted_days"])
-        note = "Suggested by the MedStock reorder plan"
-        if (group["order_vendor"] != group["supplier"]).any():
-            note += ". Backup vendor: the primary vendor cannot supply"
-        made.append(create_order(conn, supplier, list(zip(group["item_id"], group["order_qty"])),
-                                 need_by, note, origin, on_date))
+    with db.atomic(conn):
+        drafted = items_in_drafts(conn)
+        todo = plan[plan["status"].str.startswith("🔴") & (plan["order_qty"] > 0) & ~plan["item_id"].isin(drafted)]
+        if todo.empty:
+            return []
+        todo = todo.drop(columns=["order_vendor", "vendor_reason"], errors="ignore").join(
+            order_vendors(conn, todo, on_date))
+        made = []
+        for supplier, group in todo.groupby("order_vendor"):
+            if active_outage(conn, supplier, on_date):
+                continue                 # primary and backup both down: nothing can be ordered right now
+            need_by = on_date + timedelta(days=VENDORS[supplier]["quoted_days"])
+            note = "Suggested by the MedStock reorder plan"
+            if (group["order_vendor"] != group["supplier"]).any():
+                note += ". Backup vendor: the primary vendor cannot supply"
+            made.append(create_order(conn, supplier, list(zip(group["item_id"], group["order_qty"])),
+                                     need_by, note, origin, on_date))
     return made
 
 

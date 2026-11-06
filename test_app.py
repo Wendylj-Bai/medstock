@@ -1119,3 +1119,129 @@ def test_stage_cards_are_buttons_with_counts_in_their_labels(app):
         label = at.button(key=f"drill_{key}").label                      # a real button: Tab and Enter work
         count = metric_value(at, name)
         assert label.startswith(f"Show {count} ") and label.endswith(expected[name]), label
+
+
+# ---------------------------------------------------------------------------
+# Inventory Order now view: prepare draft purchase orders next to the items
+# ---------------------------------------------------------------------------
+def inventory_order_now(at, conn):
+    with conn:                                                   # make sure something needs ordering
+        conn.execute("DELETE FROM lots WHERE item_id = 'MED005'")
+    at.run()
+    dash_label = at.button(key="prepare_drafts").label
+    open_page(at, "Inventory")
+    at.segmented_control(key="inv_quick").set_value("Order now").run()
+    assert not at.exception
+    return dash_label
+
+
+def test_order_now_view_offers_the_same_draft_step_as_the_dashboard(app):
+    at, conn = app
+    dash_label = inventory_order_now(at, conn)
+    before = db_fingerprint(conn)                                # after the test's own setup write
+    button = at.button(key="inv_prepare_drafts")
+    assert button.label == dash_label                            # same vendors and count as the Dashboard
+    assert button.label.startswith("Prepare ") and button.label.endswith(", one per vendor")
+    text = " ".join(m.value for m in at.main.markdown)
+    assert "**Suggested purchase orders:**" in text
+    assert "Nothing is sent to a vendor until you review and approve" in " ".join(c.value for c in at.main.caption)
+    assert not any(b.key == "inv_go_dash" for b in at.main.button)   # no second, different draft button
+    assert db_fingerprint(conn) == before                        # showing the view writes nothing
+
+
+def test_draft_button_only_appears_in_the_order_now_view(app):
+    at, conn = app
+    inventory_order_now(at, conn)
+    for view in ("All", "Shortage risk", "Incoming", "Expiring"):
+        at.segmented_control(key="inv_quick").set_value(view).run()
+        keys = {b.key for b in at.main.button}
+        assert "inv_prepare_drafts" not in keys, view
+        assert "inv_go_dash" in keys, view                         # the footer link is back in other views
+
+
+def test_preparing_drafts_from_inventory_drafts_exactly_the_order_now_items(app):
+    at, conn = app
+    inventory_order_now(at, conn)
+    at.selectbox(key="inv_page_size").set_value("All").run()
+    rows = reorder_table(at)
+    expected = dict(zip(rows.loc[rows["order_qty"] > 0, "item_id"], rows.loc[rows["order_qty"] > 0, "order_qty"]))
+    assert expected and set(rows["status"]) <= {"Order now"}
+    not_draft = conn.execute("SELECT COUNT(*) FROM po_headers WHERE status != 'DRAFT'").fetchone()[0]
+    at.button(key="inv_prepare_drafts").click().run()
+    assert not at.exception
+    drafted = {i: q for i, q in conn.execute(
+        "SELECT p.item_id, p.qty FROM purchase_orders p JOIN po_headers h ON h.order_no = p.order_no "
+        "WHERE h.status = 'DRAFT' AND h.origin = 'Inventory'")}
+    assert drafted == {i: int(q) for i, q in expected.items()}   # every Order now item, suggested quantity
+    assert conn.execute("SELECT COUNT(*) FROM po_headers WHERE status != 'DRAFT'").fetchone()[0] == not_draft
+    assert {s for (s,) in conn.execute("SELECT status FROM po_headers WHERE origin = 'Inventory'")} == {"DRAFT"}
+    drafts = [r[0] for r in conn.execute(
+        "SELECT order_no FROM po_headers WHERE origin = 'Inventory' ORDER BY order_no")]
+    assert at.session_state["page"] == "Purchasing"               # straight to Purchasing > Drafts
+    assert at.session_state["po_stage"] == "Drafts"
+    assert at.query_params["page"] == "purchasing" and at.query_params["view"] == "drafts"
+    assert any(m.value.startswith(":violet-badge[:material/filter_alt: Drafts only]") for m in at.main.markdown)
+    assert at.selectbox(key="po_pick").value == drafts[0]         # with the first new draft open
+
+
+def test_drafting_twice_never_drafts_an_item_twice(app):
+    at, conn = app
+    inventory_order_now(at, conn)
+    at.button(key="inv_prepare_drafts").click().run()
+    lines = conn.execute("SELECT COUNT(*) FROM purchase_orders").fetchone()[0]
+    open_page(at, "Inventory")
+    at.segmented_control(key="inv_quick").set_value("Order now").run()
+    keys = {b.key for b in at.main.button}
+    assert "inv_prepare_drafts" not in keys                      # nothing left to draft
+    assert "inv_review_drafts" in keys                           # but the drafts are one click away
+    assert any("not drafted again" in i.value for i in at.main.info)
+    assert conn.execute("SELECT COUNT(*) FROM purchase_orders").fetchone()[0] == lines
+    dupes = conn.execute("SELECT item_id FROM purchase_orders p JOIN po_headers h ON h.order_no = p.order_no "
+                         "WHERE h.status = 'DRAFT' GROUP BY item_id HAVING COUNT(*) > 1").fetchall()
+    assert dupes == []
+
+
+def test_draft_button_says_it_covers_all_order_now_items_when_other_filters_narrow_the_rows(app):
+    at, conn = app
+    inventory_order_now(at, conn)
+    all_order_now = showing_count(at)
+    at.text_input(key="inv_search").input("MED005").run()
+    assert showing_count(at) < all_order_now                     # the search narrows the rows shown
+    assert f"This covers all {all_order_now} Order now items" in " ".join(m.value for m in at.main.markdown)
+    text = " ".join(m.value for m in at.main.markdown)
+    assert "not only the rows your other filters show" in text
+    assert "inv_prepare_drafts" in {b.key for b in at.main.button}
+
+
+def test_a_repeated_draft_click_adds_nothing_and_sends_nothing(app):
+    """A second press (a double click, or the same button in a second tab before it reloads) runs the same
+    step again. The check and the new drafts are one transaction, so it finds the first press's drafts
+    and creates nothing. Nothing is ever approved or sent."""
+    import pandas as pd
+    import purchasing as pu
+    _, conn = app
+    items = pd.read_sql("SELECT item_id, supplier, backup_supplier FROM items LIMIT 4", conn)
+    plan = items.assign(status="🔴 Order now", order_qty=[10, 20, 30, 40])
+    not_draft = conn.execute("SELECT COUNT(*) FROM po_headers WHERE status != 'DRAFT'").fetchone()[0]
+    first = pu.draft_suggested_orders(conn, plan, origin="Inventory")
+    lines = conn.execute("SELECT COUNT(*) FROM purchase_orders").fetchone()[0]
+    assert first
+    assert pu.draft_suggested_orders(conn, plan, origin="Inventory") == []          # second press
+    assert conn.execute("SELECT COUNT(*) FROM purchase_orders").fetchone()[0] == lines
+    assert not conn.in_transaction                                                  # the lock was released
+    assert {s for (s,) in conn.execute(
+        f"SELECT status FROM po_headers WHERE order_no IN ({','.join('?' * len(first))})", first)} == {"DRAFT"}
+    assert conn.execute("SELECT COUNT(*) FROM po_headers WHERE status != 'DRAFT'").fetchone()[0] == not_draft
+    drafted = {i: q for i, q in conn.execute(
+        f"SELECT item_id, qty FROM purchase_orders WHERE order_no IN ({','.join('?' * len(first))})", first)}
+    assert drafted == dict(zip(plan["item_id"], plan["order_qty"]))
+
+
+def test_dashboard_draft_button_still_opens_the_first_draft_without_a_filter(app):
+    at, conn = app
+    with conn:
+        conn.execute("DELETE FROM lots WHERE item_id = 'MED005'")
+    at.run()
+    at.button(key="prepare_drafts").click().run()
+    assert at.session_state["page"] == "Purchasing"
+    assert not at.session_state.get("po_stage") and "view" not in at.query_params

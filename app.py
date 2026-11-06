@@ -344,6 +344,50 @@ recall_list = events.recalls(conn)
 outage_list = events.outages(conn, TODAY)
 active_outages = outage_list[outage_list["state"] == "🔴 Active"]
 
+
+def suggested_drafts():
+    """What "Prepare draft purchase orders" would create, shared by the Dashboard and Inventory so both show
+    the same numbers. Returns (drafted, to_order, sugg): items already in a draft (item_id -> PO number), the
+    Order now items still to draft, and one suggested PO per vendor (empty when every vendor is disrupted)."""
+    drafted = pu.items_in_drafts(conn)
+    red = plan[plan["status"].str.startswith("🔴")]
+    to_order = red[(red["order_qty"] > 0) & ~red["item_id"].isin(drafted)]
+    backup = to_order["order_vendor"] != to_order["supplier"]
+    to_order = to_order.assign(order_value=np.where(backup, to_order["order_value"] * (1 + pu.BACKUP_PREMIUM),
+                                                    to_order["order_value"]),
+                               name=np.where(backup, to_order["name"] + " (backup)", to_order["name"]))
+    orderable = to_order[~to_order["order_vendor"].isin(active_outages["supplier"])]
+    sugg = (orderable.groupby("order_vendor")
+            .agg(lines=("name", "count"), items=("name", ", ".join), value=("order_value", "sum"))
+            .reset_index().rename(columns={"order_vendor": "supplier"}))
+    sugg["freight"] = [pu.freight(v, x) for v, x in zip(sugg["supplier"], sugg["value"])]
+    return drafted, to_order, sugg
+
+
+def prepare_drafts(origin, drafts_view=False):
+    """Create one draft PO per vendor for the suggested orders, then open the first new draft in Purchasing
+    (with drafts_view, inside Purchasing > Drafts). Nothing is approved or sent, and items already in a
+    draft are skipped, so pressing twice never drafts an item twice."""
+    made = pu.draft_suggested_orders(conn, plan, origin=origin)
+    if made:
+        if drafts_view:
+            open_page("Purchasing")
+            set_po_stage("Drafts")                    # Purchasing > Drafts: every draft waiting for approval
+        open_purchase_order(made[0])                  # take the buyer straight to the first new draft
+        done(f"Drafted {', '.join(made)} with the suggested quantities. Review each one and approve it to send "
+             "it to the vendor.")
+    done("Nothing new to draft: every Order now item is already ordered or in a draft.", "warning")
+
+
+def suggested_drafts_summary(sugg):
+    return (f"**Suggested purchase orders:** {n(len(sugg), 'vendor')}, {n(int(sugg['lines'].sum()), 'item')}, "
+            f"estimated **\\${sugg['value'].sum():,.0f}**"
+            + (f" plus \\${sugg['freight'].sum():,.0f} freight" if sugg["freight"].sum() else "") + ".")
+
+
+DRAFTS_NOTE = ("This only creates drafts. Nothing is sent to a vendor until you review and approve each draft in "
+               "Purchasing.")
+
 # Expiry projection for every lot: FEFO simulation using each item's day-by-day demand forecast
 daily_demand = {i: (forecasts[i]["rates"] if fc_method != SIMPLE and i in forecasts else d)
                 for i, d in zip(plan["item_id"], plan["d"])}
@@ -726,8 +770,7 @@ if PAGE == "Dashboard":
 
     # Draft purchase orders: created only on request, never sent or approved automatically
     with st.container(border=True, key="card_drafts"):
-        drafted = pu.items_in_drafts(conn)
-        to_order = red[(red["order_qty"] > 0) & ~red["item_id"].isin(drafted)]
+        drafted, to_order, sugg = suggested_drafts()
         if drafted:
             st.info(f"{n(len(set(drafted.values())), 'draft PO')} with {n(len(drafted), 'item')} "
                     f"{'is' if len(set(drafted.values())) == 1 else 'are'} waiting for approval "
@@ -735,32 +778,15 @@ if PAGE == "Dashboard":
             st.button("Review drafts in Purchasing", icon=":material/arrow_forward:", icon_position="right",
                       key="review_drafts", on_click=open_purchase_order, args=(sorted(set(drafted.values()))[0],))
         if len(to_order):
-            to_order = to_order.assign(order_value=np.where(to_order["order_vendor"] != to_order["supplier"],
-                                                            to_order["order_value"] * (1 + pu.BACKUP_PREMIUM),
-                                                            to_order["order_value"]),
-                                       name=np.where(to_order["order_vendor"] != to_order["supplier"],
-                                                     to_order["name"] + " (backup)", to_order["name"]))
-            to_order = to_order[~to_order["order_vendor"].isin(active_outages["supplier"])]
-            sugg = (to_order.groupby("order_vendor")
-                    .agg(lines=("name", "count"), items=("name", ", ".join), value=("order_value", "sum"))
-                    .reset_index().rename(columns={"order_vendor": "supplier"}))
-            sugg["freight"] = [pu.freight(v, x) for v, x in zip(sugg["supplier"], sugg["value"])]
             if sugg.empty:
                 st.warning("Items need ordering, but their primary AND backup vendors are both disrupted. "
                            "Watch stock closely and consider substitutes until a vendor is back.")
             else:
-                st.markdown(f"**Suggested purchase orders:** {n(len(sugg), 'vendor')}, "
-                            f"{n(int(sugg['lines'].sum()), 'item')}, estimated **\\${sugg['value'].sum():,.0f}**"
-                            + (f" plus \\${sugg['freight'].sum():,.0f} freight" if sugg["freight"].sum() else "") + ".")
+                st.markdown(suggested_drafts_summary(sugg))
                 if st.button(f"Prepare {n(len(sugg), 'draft purchase order')}, one per vendor",
                              icon=":material/edit_note:", type="primary", key="prepare_drafts"):
-                    made = pu.draft_suggested_orders(conn, plan)
-                    if made:
-                        open_purchase_order(made[0])          # take the buyer straight to the first draft
-                    done(f"Drafted {', '.join(made)} with the suggested quantities. Review each one and approve "
-                         "it to send it to the vendor.")
-                st.caption("This only creates drafts. Nothing is sent to a vendor until you review and approve "
-                           "each draft in Purchasing.")
+                    prepare_drafts("Dashboard")
+                st.caption(DRAFTS_NOTE)
                 with st.expander("Breakdown by vendor"):
                     st.dataframe(sugg, hide_index=True, width="stretch", column_config={
                         "supplier": "Vendor", "lines": st.column_config.NumberColumn("Items", format="%d"),
@@ -1007,6 +1033,34 @@ if PAGE == "Inventory":
     a2.button("Clear filters", key="inv_clear", on_click=clear_filters, icon=":material/filter_alt_off:",
               disabled=not active, width="stretch")
 
+    if quick == "Order now":
+        # The same suggestion and the same draft step as the Dashboard, next to the items it covers
+        with st.container(border=True, key="card_inv_drafts"):
+            drafted, to_order, sugg = suggested_drafts()
+            card_title("Draft purchase orders for Order now items",
+                       "One draft per vendor with the suggested quantities. Drafts wait for your approval.")
+            if len(sugg):
+                narrowed = len(active) > 1                # anything besides the Order now view itself
+                st.markdown(suggested_drafts_summary(sugg)
+                            + (f" This covers all {n(int(QUICK['Order now'].sum()), 'Order now item')}, not only "
+                               "the rows your other filters show." if narrowed else ""))
+                if st.button(f"Prepare {n(len(sugg), 'draft purchase order')}, one per vendor",
+                             icon=":material/edit_note:", type="primary", key="inv_prepare_drafts"):
+                    prepare_drafts("Inventory", drafts_view=True)
+                st.caption(DRAFTS_NOTE)
+            elif len(to_order):
+                st.warning("Items need ordering, but their primary AND backup vendors are both disrupted. "
+                           "Watch stock closely and consider substitutes until a vendor is back.")
+            elif not drafted:
+                st.success("Nothing to draft. Every Order now item is already on order.")
+            if drafted:
+                st.info(f"{n(len(drafted), 'item')} {'is' if len(drafted) == 1 else 'are'} already in "
+                        f"{n(len(set(drafted.values())), 'draft PO')} waiting for approval, so "
+                        f"{'it is' if len(drafted) == 1 else 'they are'} not drafted again.")
+                st.button("Review drafts in Purchasing", icon=":material/arrow_forward:", icon_position="right",
+                          key="inv_review_drafts", on_click=open_purchase_order,
+                          args=(sorted(set(drafted.values()))[0],))
+
     table = view.assign(primary=[ui.primary_status(s, a) for s, a in zip(view["status"], view["availability_risk"])],
                         status=view["status"].map(ui.plain_status),
                         availability_risk=view["availability_risk"].map(ui.plain_status),
@@ -1081,8 +1135,9 @@ if PAGE == "Inventory":
             card_title("Suggested orders",
                        f"{n(len(sugg), 'item')} from {n(sugg['order_vendor'].nunique(), 'vendor')}, "
                        f"estimated {ui.fmt_money(sugg['order_value'].sum())} before freight.")
-            st.button("Prepare drafts on the Dashboard", key="inv_go_dash", icon=":material/arrow_forward:",
-                      icon_position="right", on_click=open_page, args=("Dashboard",))
+            if quick != "Order now":                    # the Order now view has its own draft button above
+                st.button("Prepare drafts on the Dashboard", key="inv_go_dash", icon=":material/arrow_forward:",
+                          icon_position="right", on_click=open_page, args=("Dashboard",))
         capped = plan[plan["order_capped"]]
         if len(capped):
             with st.container(border=True, key="card_inv_shelf"):

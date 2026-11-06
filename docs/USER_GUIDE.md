@@ -105,7 +105,8 @@ leave everything as it was.
 **Every morning (5 minutes)**
 1. Open 📋 **Dashboard**.
 2. Read the colored boxes at the top. **Red = Vital items at risk.** Handle those first.
-3. Check the 🔴 list and click **📝 Prepare draft purchase orders**.
+3. Check the 🔴 list and click **📝 Prepare draft purchase orders** (on the Dashboard, or on
+   **Inventory** with the **Order now** quick view, see 5.4).
 4. Go to 🛒 **Purchasing**, review each draft, click **Review and approve**, then **Approve and send** (6.3).
 5. Receive anything waiting at the dock (📦 banner on the Dashboard, see 6.2).
 
@@ -194,6 +195,21 @@ may run out before it arrives. Statuses are always written in words, never shown
 history. **Download as CSV** exports every column with full precision for the items shown. The line above
 the table warns you if your filters are hiding a Vital item at risk. The measured fill rate from logged
 requests is on **Reports**.
+
+**Prepare draft purchase orders from Order now.** When the **Order now** quick view is selected, a card
+above the table shows the same suggestion as the Dashboard (vendors, items and estimated value) and a
+button: **Prepare N draft purchase orders, one per vendor**.
+
+- It creates one draft per vendor for every eligible Order now item: items with a suggested quantity
+  whose vendor (or backup vendor) can supply. It uses all Order now items, not only the rows left after
+  a search or the filters under **More filters and columns**; the card says so when those filters are on.
+- Items already in a draft are skipped, so pressing the button again, or double-clicking it, never puts
+  an item in two drafts. When every item is already drafted, the button is replaced by
+  **Review drafts in Purchasing**.
+- You land on **Purchasing > Drafts** with the first new draft open. Each new draft is marked
+  *Created by: Inventory*.
+- Nothing is approved or sent. Each draft waits until you review it and press **Review and approve**,
+  then **Approve and send** (6.3).
 
 **Why does a Vital item disappear from the list after I order it?** Because it is no longer at risk:
 the order counts as *on order*, and usable + on order is now above the reorder point. If the delivery
