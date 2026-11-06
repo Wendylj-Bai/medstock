@@ -25,6 +25,36 @@ change stock. Anything they suggest waits for a person to approve it, and every 
 4. **Earn each extra agent.** Start with one assistant; split into specialists only when the
    simulator shows the split improves results.
 
+## Portfolio presentation
+
+The public homepage describes the capability as **agentic AI for governed supply-chain decisions**
+and stays provider-neutral: an external AI model uses MedStock's governed tools. It separates what is
+built from what is planned instead of presenting a future multi-agent system as finished.
+
+| Capability | Homepage status |
+|---|---|
+| Ask MedStock | Built: tool-using, read-only analysis with evidence checks and an audit log |
+| Inventory Impact Agent | Coming later: finds the items, lots and services affected by a shortage, recall or vendor outage |
+| Sourcing Agent | Coming later: finds replacement supply from vendors, open orders, lead times, backup sources and cost |
+| Recovery Planner Agent | Coming later: combines both reports into one evidence-backed recovery proposal |
+
+### Coordinated Supply Recovery Team (planned, not built)
+
+The three planned agents form the first agent team. On a shortage, recall or vendor outage, a
+deterministic Case Coordinator opens a case and assigns the Inventory Impact Agent and the Sourcing
+Agent to work on it in parallel. The Recovery Planner Agent combines their structured reports,
+resolves conflicts and prepares one proposal. Deterministic validation checks the quantities and
+constraints, a person approves, edits or rejects it, and only MedStock's existing functions make the
+change. The audit log and scorecard record each tool call, handoff, correction, decision and outcome.
+
+The Case Coordinator is ordinary code, not an AI agent. It manages the case ID, parallel work,
+retries, structured handoffs and duplicate prevention. No agent can change inventory or send an
+order. The Policy Analyst stays on the longer-term roadmap and is not part of this first team.
+
+The explorable workflow is generated from `docs/agentic_workflow.json` and delivered at
+`static/home/agentic-workflow.html`. Provider, model, cost and privacy details remain explicit on the
+Ask MedStock page, in Help and in this design document.
+
 ## Architecture
 
 ```
@@ -124,7 +154,7 @@ instructions planted in vendor notes.
 
 1. **Foundation and Ask MedStock:** built and live (read-only).
 2. **Coming later: proposal queue and buyer assistant.** Daily order proposals with written justifications, approved by a person on a new page.
-3. **Coming later: disruption responder.** On a recall or vendor outage, proposes replacement orders and ward notices for a person to approve.
+3. **Coming later: Coordinated Supply Recovery Team.** On a shortage, recall or vendor outage, the Inventory Impact and Sourcing agents investigate in parallel and the Recovery Planner prepares one proposal for a person to approve.
 4. **Coming later: scenario comparison, then a policy analyst.** Runs two policies over the same period and recommends one.
 5. **Coming later: agent scorecard.** A page with the evaluation results.
 

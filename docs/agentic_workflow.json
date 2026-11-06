@@ -1,0 +1,442 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "How MedStock's agent team works",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "built_today",
+        "label": "Built today",
+        "focus": [
+          "question",
+          "ask_medstock",
+          "tool_router",
+          "read_tools",
+          "planning_engine",
+          "grounded_answer",
+          "audit_log"
+        ],
+        "note": "Ask MedStock answers with seven read-only tools, checks figures against the engine and logs every run."
+      },
+      {
+        "id": "agent_team",
+        "label": "Agent team",
+        "focus": [
+          "supply_event",
+          "case_coordinator",
+          "impact_agent",
+          "sourcing_agent",
+          "recovery_planner"
+        ],
+        "note": "Impact and sourcing analysis run in parallel; the Recovery Planner combines both into one proposal."
+      },
+      {
+        "id": "governance",
+        "label": "Governance",
+        "focus": [
+          "planning_engine",
+          "validation",
+          "human_approval",
+          "existing_functions",
+          "audit_log"
+        ],
+        "note": "Calculations, validation, approval, execution and the audit trail all stay outside the AI model."
+      }
+    ],
+    "output": "static/home/agentic-workflow.html"
+  },
+  "lanes": [
+    {
+      "id": "built",
+      "label": "Built today: Ask MedStock, read-only"
+    },
+    {
+      "id": "evidence",
+      "label": "Evidence"
+    },
+    {
+      "id": "team",
+      "label": "Coming later: coordinated supply recovery team",
+      "variant": "exception"
+    },
+    {
+      "id": "control",
+      "label": "Coming later",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "intake",
+      "label": "Ask or detect",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "investigate",
+      "label": "Investigate with governed tools",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "check",
+      "label": "Deterministic checks",
+      "fromCol": 4,
+      "toCol": 4,
+      "variant": "security"
+    },
+    {
+      "id": "finish",
+      "label": "Answer, act and record",
+      "fromCol": 5,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "question",
+    "ask_medstock",
+    "tool_router",
+    "read_tools",
+    "planning_engine",
+    "grounded_answer"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "question",
+      "supply_event"
+    ],
+    "allowedTerminals": [
+      "audit_log"
+    ],
+    "requiredPaths": [
+      {
+        "from": "question",
+        "to": "audit_log"
+      },
+      {
+        "from": "supply_event",
+        "to": "impact_agent"
+      },
+      {
+        "from": "supply_event",
+        "to": "sourcing_agent"
+      },
+      {
+        "from": "impact_agent",
+        "to": "recovery_planner"
+      },
+      {
+        "from": "sourcing_agent",
+        "to": "recovery_planner"
+      },
+      {
+        "from": "recovery_planner",
+        "to": "human_approval"
+      },
+      {
+        "from": "human_approval",
+        "to": "audit_log"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "question",
+      "lane": "built",
+      "col": 0,
+      "type": "external",
+      "label": "Supply-chain question",
+      "sublabel": "stock, orders, risk",
+      "width": 145
+    },
+    {
+      "id": "ask_medstock",
+      "lane": "built",
+      "col": 1,
+      "type": "backend",
+      "label": "Ask MedStock",
+      "sublabel": "plans each lookup",
+      "tag": "BUILT",
+      "width": 145
+    },
+    {
+      "id": "tool_router",
+      "lane": "built",
+      "col": 2,
+      "type": "security",
+      "label": "Governed tool router",
+      "sublabel": "approved tools only",
+      "width": 145
+    },
+    {
+      "id": "read_tools",
+      "lane": "built",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Seven read-only tools",
+      "sublabel": "stock, orders, risks",
+      "tag": "READ ONLY",
+      "width": 145
+    },
+    {
+      "id": "planning_engine",
+      "lane": "built",
+      "col": 4,
+      "type": "database",
+      "label": "Planning engine",
+      "sublabel": "forecasts and ROP",
+      "width": 145,
+      "tag": "VALIDATED"
+    },
+    {
+      "id": "grounded_answer",
+      "lane": "built",
+      "col": 5,
+      "type": "frontend",
+      "label": "Grounded answer",
+      "sublabel": "figures checked",
+      "tag": "BUILT",
+      "width": 145
+    },
+    {
+      "id": "audit_log",
+      "lane": "evidence",
+      "col": 5,
+      "type": "database",
+      "label": "Audit log",
+      "sublabel": "and scorecard",
+      "width": 145
+    },
+    {
+      "id": "supply_event",
+      "lane": "team",
+      "col": 0,
+      "type": "external",
+      "label": "Recall or outage",
+      "sublabel": "or a stock shortage",
+      "tag": "COMING LATER",
+      "width": 145
+    },
+    {
+      "id": "case_coordinator",
+      "lane": "team",
+      "col": 1,
+      "type": "security",
+      "label": "Case Coordinator",
+      "sublabel": "case ID, retries",
+      "tag": "NOT AN AI AGENT",
+      "width": 145
+    },
+    {
+      "id": "impact_agent",
+      "lane": "team",
+      "col": 2,
+      "type": "backend",
+      "label": "Inventory Impact Agent",
+      "sublabel": "items, lots, supply",
+      "tag": "COMING LATER",
+      "width": 145
+    },
+    {
+      "id": "recovery_planner",
+      "lane": "team",
+      "col": 3,
+      "type": "backend",
+      "label": "Recovery Planner Agent",
+      "sublabel": "one checked proposal",
+      "tag": "COMING LATER",
+      "width": 145
+    },
+    {
+      "id": "validation",
+      "lane": "team",
+      "col": 4,
+      "type": "security",
+      "label": "Validation",
+      "sublabel": "quantity, limits",
+      "width": 145,
+      "tag": "DETERMINISTIC"
+    },
+    {
+      "id": "sourcing_agent",
+      "lane": "control",
+      "col": 2,
+      "type": "backend",
+      "label": "Sourcing Agent",
+      "sublabel": "vendors, lead times",
+      "tag": "COMING LATER",
+      "width": 145
+    },
+    {
+      "id": "human_approval",
+      "lane": "control",
+      "col": 4,
+      "type": "security",
+      "label": "Human decision",
+      "sublabel": "approve, edit, reject",
+      "tag": "REQUIRED",
+      "width": 145
+    },
+    {
+      "id": "existing_functions",
+      "lane": "control",
+      "col": 5,
+      "type": "backend",
+      "label": "MedStock functions",
+      "sublabel": "makes the change",
+      "width": 145,
+      "tag": "EXISTING CODE"
+    }
+  ],
+  "edges": [
+    {
+      "id": "ask_question",
+      "from": "question",
+      "to": "ask_medstock",
+      "label": "ask",
+      "variant": "emphasis"
+    },
+    {
+      "id": "choose_tools",
+      "from": "ask_medstock",
+      "to": "tool_router",
+      "label": "choose",
+      "variant": "emphasis"
+    },
+    {
+      "id": "call_tools",
+      "from": "tool_router",
+      "to": "read_tools",
+      "label": "call"
+    },
+    {
+      "id": "read_engine",
+      "from": "read_tools",
+      "to": "planning_engine",
+      "label": "read"
+    },
+    {
+      "id": "return_answer",
+      "from": "planning_engine",
+      "to": "grounded_answer",
+      "label": "evidence",
+      "variant": "emphasis"
+    },
+    {
+      "id": "record_answer",
+      "from": "grounded_answer",
+      "to": "audit_log",
+      "label": "record",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "open_case",
+      "from": "supply_event",
+      "to": "case_coordinator",
+      "label": "open",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "assign_impact",
+      "from": "case_coordinator",
+      "to": "impact_agent",
+      "label": "assign",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "assign_sourcing",
+      "from": "case_coordinator",
+      "to": "sourcing_agent",
+      "label": "assign",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "impact_report",
+      "from": "impact_agent",
+      "to": "recovery_planner",
+      "label": "report",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "sourcing_report",
+      "from": "sourcing_agent",
+      "to": "recovery_planner",
+      "label": "report",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "check_proposal",
+      "from": "recovery_planner",
+      "to": "validation",
+      "label": "proposal",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "review_proposal",
+      "from": "validation",
+      "to": "human_approval",
+      "variant": "security",
+      "route": "drop"
+    },
+    {
+      "id": "apply_approved",
+      "from": "human_approval",
+      "to": "existing_functions",
+      "label": "approved",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "record_outcome",
+      "from": "existing_functions",
+      "to": "audit_log",
+      "label": "record",
+      "variant": "dashed",
+      "role": "async"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Built today",
+      "items": [
+        "Ask MedStock uses seven read-only tools",
+        "Answers show their evidence and every run is logged"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Coming later",
+      "items": [
+        "Impact and sourcing agents work the same case in parallel",
+        "The Recovery Planner prepares one proposal for a person"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Outside the model",
+      "items": [
+        "The Case Coordinator is ordinary code, not an AI agent",
+        "No agent can change inventory or send an order"
+      ]
+    }
+  ]
+}

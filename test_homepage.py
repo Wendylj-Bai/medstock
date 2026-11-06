@@ -1,3 +1,5 @@
+import json
+import re
 from pathlib import Path
 
 import pytest
@@ -184,12 +186,102 @@ def test_homepage_introduces_ask_medstock_honestly(monkeypatch):
     at.run()
     html = homepage_html(at)
     assert 'id="ask"' in html and "Ask a question, get an answer from the data" in html
-    assert "read-only" in html.lower() and "Gemini" in html and "fictional" in html
+    assert "read-only" in html.lower() and "governed" in html.lower() and "fictional" in html
+    assert "Gemini" not in html                              # provider details belong in Help, privacy and docs
     for q in ["Which Vital items are most at risk of running out?", "Are any vendors disrupted or late right now?"]:
         assert q in html
     assert "autonomous" not in html.lower()                       # never described as autonomous
     assert "Coming later" in html                                   # approval-based actions are future work
     assert at.button(key="open_ask").label == "Sign in to try Ask MedStock"
+
+
+def test_homepage_presents_agentic_ai_as_built_and_planned(monkeypatch):
+    no_db(monkeypatch)
+    at = AppTest.from_file(str(APP), default_timeout=180)
+    at.run()
+    html = homepage_html(at)
+    assert 'id="agentic"' in html
+    assert "Agentic AI for governed supply-chain decisions" in html
+    assert "people retain approval" in html and "governed tools" in html
+    assert "Gemini" not in html                              # provider stays in Ask MedStock, Help, privacy and docs
+
+    # the agent table: Ask MedStock is built, the three team agents are coming later
+    table = html[html.index('class="ms-agent-table"'):html.index("</table>")]
+    rows = re.findall(r'<tr><td data-label="Agent">([^<]+)</td><td data-label="Status">'
+                      r'<span class="ms-agent-status (\w+)">([^<]+)</span>', table)
+    assert rows == [("Ask MedStock", "built", "Built"),
+                    ("Inventory Impact Agent", "planned", "Coming later"),
+                    ("Sourcing Agent", "planned", "Coming later"),
+                    ("Recovery Planner Agent", "planned", "Coming later")]
+    for old in ("Buyer Agent", "Disruption Agent"):              # superseded by the recovery team
+        assert old not in html
+    assert "Policy Analyst" not in table                          # longer-term roadmap only
+    for label in ("Agent", "Status", "Problem it helps solve", "How it works"):
+        assert f'data-label="{label}"' in table                   # phones stack each cell under its label
+
+    assert "The engine calculates" in html and "Agents investigate and coordinate" in html
+    assert "People keep authority" in html
+    assert "investigate the same event in" in html and "parallel" in html
+    assert "How MedStock's agent team works" in html
+    assert "The Case Coordinator is not another AI agent" in html
+    assert "Coordinated Supply Recovery Team" in html
+    assert "No agent can directly" in html
+    assert "autonomous" not in html.lower()
+    assert "agentic-workflow.html?theme=light" in html
+
+
+def test_both_diagrams_load_as_urls_not_html_text(monkeypatch):
+    # st.iframe treats a string without a leading "/" or scheme as raw HTML, which shows the path as text
+    no_db(monkeypatch)
+    at = AppTest.from_file(str(APP), default_timeout=180)
+    at.run()
+    srcs = [e.proto.src for e in at.get("iframe")]
+    assert srcs == ["/app/static/home/agentic-workflow.html?theme=light&embed=1",
+                    "/app/static/home/workflow.html?theme=light&embed=1"]
+    assert all(not e.proto.srcdoc for e in at.get("iframe"))
+    root = Path(__file__).parent / "static/home"
+    assert (root / "agentic-workflow.html").is_file() and (root / "workflow.html").is_file()
+
+
+def test_agent_diagram_frame_shrinks_with_its_wrapper_below_desktop():
+    # Streamlit fixes the iframe's wrapper at height 700px and flex-basis 700px. Shrinking only the iframe
+    # left up to 570px of blank space on tablets and phones, so both must be released below desktop.
+    import homepage
+    css = re.sub(r"\s+", " ", homepage.CSS)
+    block = re.search(r"@media \(max-width:1100px\)\{ (\.st-key-agentic_frame .*?)\} \}", css)
+    assert block, "responsive rules for the agent diagram are missing"
+    rules = block.group(1)
+    wrapper = re.search(r'\.st-key-agentic_frame \[data-testid="stElementContainer"\]\{([^}]*)', rules).group(1)
+    assert "height:auto !important" in wrapper and "flex:0 0 auto !important" in wrapper
+    frame = re.search(r"\.st-key-agentic_frame iframe\{([^}]*)", rules).group(1)
+    assert "height:auto !important" in frame and "aspect-ratio:16/9" in frame and "max-height:700px" in frame
+    # desktop keeps the 700px frame: no sizing override outside the media query
+    outside = css.replace(block.group(0), "")
+    assert "aspect-ratio" not in outside and "flex:0 0 auto" not in outside
+
+
+def test_agentic_workflow_matches_the_team_design():
+    root = Path(__file__).parent
+    spec = json.loads((root / "docs/agentic_workflow.json").read_text())
+    assert spec["meta"]["quality_profile"] == "showcase"
+    assert [v["label"] for v in spec["meta"]["views"]] == ["Built today", "Agent team", "Governance"]
+    labels = {n["id"]: n["label"] for n in spec["nodes"]}
+    for name in ("Ask MedStock", "Inventory Impact Agent", "Sourcing Agent", "Recovery Planner Agent",
+                 "Case Coordinator", "Human decision", "Audit log"):
+        assert name in labels.values()
+    edges = {(e["from"], e["to"]) for e in spec["edges"]}
+    # both specialists start from the coordinator and report to the planner (parallel, structured handoffs)
+    for agent in ("impact_agent", "sourcing_agent"):
+        assert ("case_coordinator", agent) in edges and (agent, "recovery_planner") in edges
+    # the proposal is validated, then approved, before existing functions change anything
+    assert ("recovery_planner", "validation") in edges and ("validation", "human_approval") in edges
+    assert ("human_approval", "existing_functions") in edges
+    assert not any(e[1] == "existing_functions" and e[0] != "human_approval" for e in edges)
+    coord = next(n for n in spec["nodes"] if n["id"] == "case_coordinator")
+    assert coord["tag"] == "NOT AN AI AGENT"
+    page = (root / "static/home/agentic-workflow.html").read_text(encoding="utf-8")
+    assert "Recovery Planner Agent" in page and "Buyer Agent" not in page
+    assert "Gemini" not in json.dumps(spec) and "Gemini" not in page
 
 
 def test_ask_cta_signed_out_goes_through_sign_in_to_ask_medstock(home_to_demo):

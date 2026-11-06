@@ -12,7 +12,6 @@ import html
 from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 import ui
 
@@ -99,10 +98,10 @@ _EXTENSIONS = [
     ("Simulation clock", "Generates daily demand and vendor behavior, so a reorder policy can be tested over weeks in a few seconds."),
     ("Supply risk", "Lot recalls, vendor outages and switching to a backup vendor."),
     ("Reporting", "The KPI page, weekly trends, forecast backtesting, sign-in and this homepage."),
-    ("AI assistant", "Ask MedStock, a Gemini-powered, read-only assistant. It answers questions by looking up MedStock's own data with seven tools, checks every figure against what it looked up, and logs every answer."),
+    ("Agentic AI foundation", "Ask MedStock is a tool-using, read-only supply-chain assistant. It investigates questions with seven governed lookups, checks every figure against the evidence and logs every answer."),
 ]
 
-_STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly", "Gemini API"]
+_STACK = ["Python", "Streamlit", "SQLite", "Pandas", "NumPy", "SciPy", "Plotly", "External AI model"]
 
 # Ask MedStock on the homepage: what you can ask, and what it does and does not do
 ASK_QUESTIONS = [
@@ -120,10 +119,25 @@ _ASK_FACTS = [
      "tells you which page does that."),
 ]
 
+_AGENTS = [
+    ("Ask MedStock", "Built", "Answers questions about stock, purchasing and supply risk",
+     "Selects from seven read-only tools, checks figures against returned evidence and records every run"),
+    ("Inventory Impact Agent", "Coming later",
+     "Determines which items, lots and services are affected by a shortage, recall or vendor outage",
+     "Reviews usable stock, lots, expiry, Vital status, demand, open orders and projected days of supply"),
+    ("Sourcing Agent", "Coming later", "Finds practical replacement supply options",
+     "Reviews vendors, active disruptions, open purchase orders, lead times, backup sources and estimated cost"),
+    ("Recovery Planner Agent", "Coming later", "Turns separate findings into one reviewable response",
+     "Combines the impact and sourcing reports, resolves conflicts and prepares an evidence-backed recovery proposal"),
+]
+
 _NEXT = [
-    ("Policy comparison", "Running two inventory policies over the same simulated period and comparing the results."),
+    ("Policy comparison", "Running two inventory policies over the same simulated period and comparing the results. A "
+     "Policy Analyst agent could later explain the trade-offs."),
     ("Ward supply rooms", "Par levels and transfers between the central storeroom and the wards."),
-    ("Coming later: AI suggestions you approve", "Ask MedStock drafting order proposals and disruption responses for a person to review and approve. Nothing would change without that approval."),
+    ("Coordinated Supply Recovery Team", "Three specialist agents investigating shortages, recalls and vendor outages "
+     "together, then preparing one evidence-backed recovery proposal for a person to approve. No agent can directly "
+     "change inventory or send an order."),
 ]
 
 # ---------------------------------------------------------------------------
@@ -239,8 +253,34 @@ CSS = """
 .ms-step h3{font-size:1rem;margin-bottom:.3rem;padding-right:2rem;}
 .ms-step p{font-size:.88rem;}
 
-/* workflow diagram frame */
-.st-key-flow_frame iframe{border:1px solid var(--ms-line);border-radius:20px;background:#fff;box-shadow:0 14px 34px rgba(43,32,120,.07);}
+/* workflow diagram frames */
+.st-key-flow_frame iframe,.st-key-agentic_frame iframe{border:1px solid var(--ms-line);border-radius:20px;background:#fff;
+  box-shadow:0 14px 34px rgba(43,32,120,.07);}
+/* below desktop the agent diagram scales with width, so the frame and Streamlit's wrapper (fixed at 700px)
+   follow the diagram's shape instead of reserving empty space */
+@media (max-width:1100px){
+  .st-key-agentic_frame [data-testid="stElementContainer"]{height:auto !important;flex:0 0 auto !important;}
+  .st-key-agentic_frame iframe{height:auto !important;aspect-ratio:16/9;min-height:220px;max-height:700px;}
+}
+
+/* Agentic AI portfolio */
+.ms-agent-lede{max-width:76ch;}
+.ms-agent-principles{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin:1.3rem 0 1.5rem;}
+.ms-agent-principles>div{background:var(--ms-lav-2);border:1px solid #DED7FF;border-radius:14px;padding:.9rem 1rem;}
+.ms-agent-principles b{display:block;color:var(--ms-navy);font-size:.9rem;margin-bottom:.2rem;}
+.ms-agent-principles span{display:block;color:var(--ms-text);font-size:.83rem;line-height:1.45;}
+.ms-agent-table{width:100%;border:1px solid var(--ms-line);border-radius:18px;border-spacing:0;overflow:hidden;background:#fff;
+  box-shadow:0 6px 18px rgba(43,32,120,.04);}
+.ms-agent-table th{text-align:left;background:var(--ms-lav);color:var(--ms-muted);font-size:.75rem;letter-spacing:.06em;
+  text-transform:uppercase;padding:.8rem 1rem;border-bottom:1px solid var(--ms-line);}
+.ms-agent-table td{vertical-align:top;color:var(--ms-text);font-size:.86rem;line-height:1.45;padding:1rem;border-bottom:1px solid var(--ms-line);}
+.ms-agent-table tr:last-child td{border-bottom:none;}
+.ms-agent-table td:first-child{color:var(--ms-navy);font-weight:700;white-space:nowrap;}
+.ms-agent-status{display:inline-block;border-radius:999px;padding:.2rem .55rem;font-size:.72rem;font-weight:700;white-space:nowrap;}
+.ms-agent-status.built{background:#E2F7EF;color:#08775B;}
+.ms-agent-status.planned{background:#FFF2D9;color:#9B5A00;}
+.ms-agent-team{max-width:80ch;margin:1rem 0 0;color:var(--ms-text);font-size:.92rem;line-height:1.55;}
+.ms-agent-note{max-width:76ch;margin:.6rem 0 0;color:var(--ms-muted);font-size:.86rem;line-height:1.5;}
 
 /* course and my work */
 .ms-course{display:grid;grid-template-columns:.95fr 1.05fr;background:var(--ms-lav-2);border-radius:22px;overflow:hidden;}
@@ -291,12 +331,20 @@ CSS = """
   .ms-high>div:nth-child(3){border-left:none;} .ms-high>div{border-top:1px solid var(--ms-line);}
   .ms-tools{grid-template-columns:1fr 1fr;} .ms-next{grid-template-columns:1fr 1fr;}
   .ms-two,.ms-course,.ms-cols{grid-template-columns:1fr;} .ms-foot{grid-template-columns:1fr 1fr;}
+  .ms-agent-principles{grid-template-columns:1fr;}
   .ms-float{left:12px;bottom:12px;} .ms-hero-pic img.photo{height:300px;} .ms-hero-text{padding-top:1.6rem;}
   .ms-cta{flex-wrap:wrap;} .ms-cta a{margin-left:0;}
 }
 @media (max-width:560px){
   .ms-high,.ms-stats,.ms-tools,.ms-next,.ms-steps,.ms-foot{grid-template-columns:1fr;}
   .ms-high>div{border-left:none;} .ms-strip span:last-child{display:none;}
+  .ms-agent-table,.ms-agent-table tbody,.ms-agent-table tr,.ms-agent-table td{display:block;width:100%;}
+  .ms-agent-table thead{display:none;}
+  .ms-agent-table tr{padding:.8rem 1rem;border-bottom:1px solid var(--ms-line);}
+  .ms-agent-table tr:last-child{border-bottom:none;}
+  .ms-agent-table td{border:0;padding:.28rem 0;white-space:normal !important;}
+  .ms-agent-table td::before{content:attr(data-label);display:block;color:var(--ms-muted);font-size:.7rem;font-weight:700;
+    letter-spacing:.05em;text-transform:uppercase;margin-bottom:.1rem;}
 }
 """
 
@@ -309,7 +357,7 @@ def _top():
   <nav class="ms-nav" id="top">
     <a class="ms-brand" href="#top"><img src="{LOGO}" alt="">MedStock</a>
     <div class="ms-links">
-      <a class="on" href="#top">Home</a><a href="#what">What it does</a><a href="#ask">Ask MedStock</a><a href="#how">How it works</a>
+      <a class="on" href="#top">Home</a><a href="#what">What it does</a><a href="#ask">Ask MedStock</a><a href="#agentic">Agentic AI</a>
       <a href="#course">Course and my work</a><a href="#next">Roadmap</a>
     </div>
     <a class="ms-btn-out" href="{DEMO_LINK}" target="_self">Open the demo {icon('arrow', size=16)}</a>
@@ -440,7 +488,7 @@ def _body():
   <footer class="ms-foot">
     <div><a class="ms-brand" href="#top"><img src="{LOGO}" alt="">MedStock</a>
       <p>A hospital supply inventory planner, built as a supply chain portfolio project.</p></div>
-    <div><h4>Explore</h4><a href="#what">What it does</a><a href="#how">How it works</a><a href="#next">Roadmap</a></div>
+    <div><h4>Explore</h4><a href="#what">What it does</a><a href="#agentic">Agentic AI</a><a href="#how">How it works</a><a href="#next">Roadmap</a></div>
     <div><h4>Docs</h4><a href="{GITHUB}/blob/main/docs/USER_GUIDE.md" target="_blank">User guide</a>
       <a href="{GITHUB}/blob/main/docs/HOW_IT_WORKS.md" target="_blank">How it works</a>
       <a href="{GITHUB}/blob/main/docs/BUILD_LOG.md" target="_blank">Build log</a></div>
@@ -459,14 +507,51 @@ def _ask_section():
     <div class="ms-two">
       <div><p class="ms-eyebrow">Ask MedStock: AI assistant</p><h2>Ask a question, get an answer from the data</h2>
         <p class="ms-intro">Ask about stock risks, what to reorder, Vital items, vendor disruptions, recalls or
-           performance. Ask MedStock is a Gemini-powered assistant that uses read-only tools to look the answer up
-           in MedStock's own fictional data, then shows what it checked.</p>
+           performance. Ask MedStock provides AI-powered supply-chain analysis using MedStock's governed, read-only
+           tools. It looks up the answer in the app's fictional data, then shows what it checked.</p>
         <ul class="ms-list">{facts}</ul></div>
       <div class="ms-ask-card"><p class="lbl">Questions you can ask</p>{questions}
         <p class="ms-ask-note">Answers come only from MedStock's fictional data. Don't enter real patient, hospital or
            personal information.</p></div>
     </div>
   </section></div>"""
+
+
+def _agentic_section():
+    rows = "".join(
+        f'<tr><td data-label="Agent">{_esc(name)}</td>'
+        f'<td data-label="Status"><span class="ms-agent-status {"built" if status == "Built" else "planned"}">{_esc(status)}</span></td>'
+        f'<td data-label="Problem it helps solve">{_esc(problem)}</td>'
+        f'<td data-label="How it works">{_esc(how)}</td></tr>'
+        for name, status, problem, how in _AGENTS)
+    return f"""<div class="ms"><section class="ms-sec" id="agentic">
+      <p class="ms-eyebrow">Agentic AI</p><h2>Agentic AI for governed supply-chain decisions</h2>
+      <p class="ms-intro ms-agent-lede">MedStock combines deterministic supply-chain planning with a tool-using AI
+        layer. Today, Ask MedStock investigates inventory, purchasing and supply-risk questions using governed,
+        read-only tools. The next phase adds a coordinated team of specialist agents that can investigate
+        disruptions and prepare recovery proposals, while people retain approval and MedStock's validated functions
+        perform every change.</p>
+      <div class="ms-agent-principles">
+        <div><b>The engine calculates</b><span>Forecasts, reorder points, suggested quantities and stock balances remain deterministic and checkable.</span></div>
+        <div><b>Agents investigate and coordinate</b><span>Agents divide the work, use governed tools and exchange structured evidence instead of relying on free-form conversations.</span></div>
+        <div><b>People keep authority</b><span>Proposed actions wait for approval. Tool calls, agent handoffs, corrections, decisions and outcomes are recorded.</span></div>
+      </div>
+      <table class="ms-agent-table" aria-label="MedStock agents and their status">
+        <thead><tr><th>Agent</th><th>Status</th><th>Problem it helps solve</th><th>How it works</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+      <p class="ms-agent-team">The Inventory Impact Agent and Sourcing Agent can investigate the same event in
+        parallel. The Recovery Planner Agent combines their structured findings into one proposal. Deterministic
+        checks validate the quantities and constraints before a person can approve anything.</p>
+      <div class="ms-head" style="margin-top:2rem"><div><p class="ms-eyebrow">Coordinated agent workflow</p>
+        <h2>How MedStock's agent team works</h2>
+        <p class="ms-intro">Trace today's read-only question path and the planned team workflow for shortages,
+          recalls and vendor disruptions. Calculations, validation, approval and database changes remain outside
+          the AI model.</p>
+        <p class="ms-agent-note">The Case Coordinator is not another AI agent. It manages the case ID, parallel work,
+          retries, structured handoffs and duplicate prevention.</p></div>
+        <a class="ms-link" href="{IMG}agentic-workflow.html?theme=light" target="_blank">Open full screen {icon('arrow', size=16)}</a></div>
+    </section></div>"""
 
 
 def open_demo():
@@ -501,6 +586,9 @@ def render_homepage():
         st.button("Open Ask MedStock" if signed_in else "Sign in to try Ask MedStock", key="open_ask",
                   icon=":material/auto_awesome:", on_click=open_ask, type="primary")
         st.caption("You're signed in." if signed_in else "Invite-only, like the rest of the demo.")
+    st.html(_agentic_section())
+    with st.container(key="agentic_frame"):
+        st.iframe("/" + IMG + "agentic-workflow.html?theme=light&embed=1", height=700)
     st.html('<div class="ms">' + middle + "</div>")
     st.html(f"""<div class="ms"><section class="ms-sec" id="flow">
       <div class="ms-head"><div><p class="ms-eyebrow">Workflow</p><h2>How a day flows through MedStock</h2>
@@ -509,5 +597,5 @@ def render_homepage():
         <a class="ms-link" href="{IMG}workflow.html?theme=light" target="_blank">Open full screen {icon('arrow', size=16)}</a></div>
     </section></div>""")
     with st.container(key="flow_frame"):
-        components.iframe(IMG + "workflow.html?theme=light&embed=1", height=700)
+        st.iframe("/" + IMG + "workflow.html?theme=light&embed=1", height=700)
     st.html('<div class="ms">' + after)
