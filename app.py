@@ -185,6 +185,23 @@ def open_inventory_view(quick):
     sync_view("Inventory", quick, "All")
 
 
+def notifications_destination(counts):
+    """Where the bell leads, from the counts it shows. Expiring stock is handled on Inventory, recalls and
+    vendor disruptions on Alerts: expiry only -> Inventory > Expiring; anything else (including nothing
+    active, or a mix) -> Alerts, which then shows the expiry count with its own button to Inventory."""
+    only_expiry = counts["expiring"] > 0 and counts["recalls"] == 0 and counts["disruptions"] == 0
+    return ("Inventory", "Expiring") if only_expiry else ("Recalls & disruptions", None)
+
+
+def open_notifications(counts):
+    """Bell callback: navigation only (session state and the address); it never writes to the database."""
+    page, view = notifications_destination(counts)
+    if view:
+        open_inventory_view(view)
+    else:
+        open_page(page)
+
+
 # The Purchasing stage cards. Each card's count and its filtered list use the same rule on the same
 # order list (pu.orders), so they cannot disagree. name -> (drill key, rule, singular, plural, phrase).
 # "Late" is pu.orders' own rule: sent, confirmed or shipped and past the promised date, so it overlaps
@@ -451,7 +468,7 @@ if rep:
 
 recalls_14d = recall_list[pd.to_datetime(recall_list["date"]) > pd.Timestamp(TODAY) - pd.Timedelta(days=14)]
 ALERTS = events.alert_counts(recall_list, outage_list, lot_risk, TODAY)
-bell_slot.button(ui.alerts_label(ALERTS["total"]), key="bell_btn", on_click=open_page, args=("Recalls & disruptions",),
+bell_slot.button(ui.notifications_label(ALERTS["total"]), key="bell_btn", on_click=open_notifications, args=(ALERTS,),
                  help=f"Alerts: {n(ALERTS['recalls'], 'recent recall')}, {n(ALERTS['disruptions'], 'vendor disruption')}, "
                       f"{n(ALERTS['expiring'], 'item')} with stock expired or expiring within 30 days")
 st.html("<style>" + ui.nav_css(PAGE)                    # no count on the Alerts menu item: the bell is the one count
@@ -956,7 +973,7 @@ if PAGE == "Inventory":
              "Days of supply (lowest first)": ["days_of_supply", "ved_rank"],
              "Order value (highest first)": ["order_value", "ved_rank"]}
     base = plan.assign(availability_risk=plan["availability_risk"].replace({"🟢 OK": "🟢 Enough stock"}))
-    expiring_ids = set(lot_risk.loc[lot_risk["days_left"] <= 30, "item_id"])
+    expiring_ids = events.expiring_item_ids(lot_risk, recall_list)   # the same items the bell counts
     QUICK = {"All": base.index == base.index,
              "Order now": base["status"].str.startswith("🔴"),
              "Shortage risk": base["availability_risk"].isin(RISKS[:2]),
@@ -1631,6 +1648,15 @@ if PAGE == "Recalls & disruptions":
         "dollar", "violet", help="All recalls so far")
     if active_outages.empty and recalls_14d.empty:
         st.caption(":material/check_circle: No active disruptions and no recent recalls.")
+    if ALERTS["expiring"]:
+        # The bell also counts expiring stock; it is handled on Inventory, so the count links straight there
+        with st.container(border=True, key="card_alert_expiring"):
+            st.markdown(f"{ui.badge_md('Expiring soon')} **{n(ALERTS['expiring'], 'item')}** "
+                        f"{'has' if ALERTS['expiring'] == 1 else 'have'} stock expired or expiring within 30 days. "
+                        "Expiring stock is handled on the Inventory page, not here.")
+            st.button(f"Show {n(ALERTS['expiring'], 'expiring item')} in Inventory", key="alerts_go_expiring",
+                      icon=":material/arrow_forward:", icon_position="right", on_click=open_inventory_view,
+                      args=("Expiring",))
     for o in active_outages.itertuples():
         affected = plan[plan["supplier"] == o.supplier]
         with st.container(border=True, key=f"card_outage_{o.outage_id}"):

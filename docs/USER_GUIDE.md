@@ -41,9 +41,23 @@ that counts active alerts:
   many of its lots qualify; recalled lots are not counted again here).
 
 Reorder suggestions are not counted; they are on the Dashboard and Inventory. A red number appears on the
-bell only when there is at least one active alert (above 99 it shows "99+"). Click the bell to open
-**Alerts**. The bell is inside the sidebar, so on a phone it is hidden while the sidebar is closed; open
-the sidebar with the arrow at the top left to see it.
+bell only when there is at least one active alert. The red number stops at "99+" to keep the badge small,
+but a screen reader announces the exact number, for example "Open notifications, 150 active" (or "Open
+notifications, none active" when nothing is active). Hover over the bell to see the count for each kind.
+
+Where the bell takes you depends on what is active:
+
+| Active | The bell opens |
+|---|---|
+| Only expiring stock | **Inventory** with the **Expiring** quick view, listing exactly the items the bell counts |
+| Only recalls or vendor disruptions | **Alerts** |
+| A mix of expiring stock and recalls or disruptions | **Alerts**, which shows the expiring-stock count with a **Show N expiring items in Inventory** button |
+| Nothing | **Alerts** |
+
+Opening the bell never changes any data. The address bar shows where you are (for example
+`?page=inventory&view=expiring`), so a reload returns there after you sign in. The bell is inside the
+sidebar, so on a phone it is hidden while the sidebar is closed; open the sidebar with the arrow at the
+top left to see it.
 
 **Actions that cannot be undone ask first.** Recalls, vendor disruptions (starting one, ending one early,
 or simulating a random one), write-offs, approving or cancelling a purchase order, deleting a draft,
@@ -58,7 +72,7 @@ leave everything as it was.
 | **KPIs** (Reports) | Is inventory management working? Fill rate (predicted and measured), stockouts, inventory turns, days on hand, waste, vendor reliability, weekly trends and CSV export |
 | **Purchasing** | Purchase orders to vendors: drafts to approve, orders on their way, vendor messages, the vendor directory and scorecard |
 | **Stock movements** | Record what physically happens: issue to a department, receive a delivery, write off, count |
-| **Recalls & disruptions** | Recall a lot, or make a vendor unable to supply, and watch how the system reacts. The notification bell at the top of the sidebar counts active alerts and opens this page |
+| **Recalls & disruptions** | Recall a lot, or make a vendor unable to supply, and watch how the system reacts. The notification bell at the top of the sidebar counts active alerts and opens this page, or Inventory > Expiring when expiring stock is the only alert |
 | **Forecast** | Expected demand for the next 12 months, and which items are about to get busier |
 | **Expiry** | Expired stock, stock expiring soon, and stock that will expire before it can be used |
 | **Item detail** | Everything about one item, including how its reorder point was calculated |

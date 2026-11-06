@@ -415,3 +415,22 @@ transaction: the check for items already in a draft and the new drafts are saved
 double click or the same button pressed in a second tab adds nothing the second time. In the browser
 I double-clicked the button on a throwaway copy of the data: it made exactly one set of drafts, with
 no item drafted twice and nothing sent. The full suite passed with 189 tests.
+
+## 24. The bell goes where the alert is handled
+
+**Date:** November 5, 2026
+
+**Built:** The notification bell now opens the page where its alerts are handled. When only stock is
+expiring, it opens **Inventory > Expiring**; recalls, vendor disruptions or a mix open **Alerts**, and
+Alerts then shows the expiring-stock count with a button to Inventory > Expiring. Its screen-reader
+label is now "Open notifications, N active" with the exact number; the red badge still stops at 99+, and
+the tooltip still gives the count for each kind.
+
+**Problem:** The bell always opened Alerts, but most of its count is usually expiring stock, which
+Alerts does not list. Clicking a red "6" led to a page that showed none of the six.
+
+**Decision:** The bell's expiry count and the Inventory "Expiring" quick view now share one rule
+(`events.expiring_item_ids`), so the bell's number is the number on the list it opens; before, each
+had its own copy of the rule, which could drift apart. The destination is decided from the same counts the bell shows,
+and opening it is navigation only. Tests cover nothing active, each category alone, a mix and 99+, the
+address, matching counts and an unchanged database fingerprint.

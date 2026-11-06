@@ -73,14 +73,14 @@ def test_alert_count_zero():
     c = events.alert_counts(NO_RECALLS, NO_OUTAGES, lots(("A", "L1", 120, 10)), TODAY)
     assert c == {"recalls": 0, "disruptions": 0, "expiring": 0, "total": 0}
     assert ui.badge_text(c["total"]) == "" and "::after" not in ui.bell_css(c["total"])   # no red badge
-    assert ui.alerts_label(0) == "Open alerts, none active"
+    assert ui.notifications_label(0) == "Open notifications, none active"
 
 
 def test_alert_count_one():
     c = events.alert_counts(NO_RECALLS, NO_OUTAGES, lots(("A", "L1", 12, 10)), TODAY)
     assert c["total"] == 1 and c["expiring"] == 1
     assert ui.badge_text(1) == "1" and 'content:"1"' in ui.bell_css(1)
-    assert ui.alerts_label(1) == "Open alerts, 1 active"
+    assert ui.notifications_label(1) == "Open notifications, 1 active"
 
 
 def test_alert_count_adds_up_categories():
@@ -103,4 +103,7 @@ def test_alert_count_never_counts_a_record_twice():
 def test_badge_caps_at_99_plus():
     assert ui.badge_text(99) == "99" and ui.badge_text(100) == "99+" and ui.badge_text(4321) == "99+"
     assert 'content:"99+"' in ui.bell_css(250)
-    assert ui.alerts_label(250) == "Open alerts, 99+ active"
+    assert ui.notifications_label(250) == "Open notifications, 250 active"   # screen readers hear the exact count
+    assert ui.notifications_label(99) == "Open notifications, 99 active"
+    assert ui.notifications_label(100) == "Open notifications, 100 active"
+    assert ui.notifications_label(0) == ui.notifications_label(None) == "Open notifications, none active"

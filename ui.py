@@ -445,15 +445,16 @@ def badge_text(count):
     return "" if count <= 0 else "99+" if count > 99 else str(count)
 
 
-def alerts_label(count):
-    """What a screen reader hears for the notification bell."""
+def notifications_label(count):
+    """What a screen reader hears for the notification bell: the exact number, even above 99 where the
+    visual badge (badge_text) stops at "99+"."""
     count = int(count or 0)
-    return "Open alerts, none active" if count <= 0 else f"Open alerts, {badge_text(count)} active"
+    return "Open notifications, none active" if count <= 0 else f"Open notifications, {count} active"
 
 
 def bell_css(count):
     """The bell button: a line icon in a white tile, plus a red count badge only when count > 0. The button
-    text (alerts_label) stays available to screen readers but is visually hidden."""
+    text (notifications_label) stays available to screen readers but is visually hidden."""
     css = (".st-key-bell_btn button{width:40px;height:40px;min-height:40px;padding:0;border-radius:12px;"
            "background:#FFFFFF;border:1px solid #E7E4F5;position:relative;overflow:visible;}"
            ".st-key-bell_btn button:hover{background:#F3F1FC;border-color:#D9D3F5;}"

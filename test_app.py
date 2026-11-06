@@ -649,19 +649,19 @@ def test_purchasing_opens_when_a_drafts_need_by_date_has_passed(app):
 # ---------------------------------------------------------------------------
 # Notification bell, ending a disruption and refusing a line at the dock
 # ---------------------------------------------------------------------------
-def test_bell_shows_the_alert_count_and_opens_alerts(app):
+def test_bell_shows_the_notification_count_and_routes_by_category(app):
     import events
     at, conn = app
     bell = at.button(key="bell_btn")
     T = db.today(conn)
     expiring_items = conn.execute("SELECT COUNT(DISTINCT item_id) FROM lots WHERE qty > 0 AND expiry_date <= ?",
                                   ((T + timedelta(days=30)).isoformat(),)).fetchone()[0]
-    assert bell.label == ui.alerts_label(expiring_items)          # no recalls or disruptions yet
+    assert bell.label == ui.notifications_label(expiring_items)  # no recalls or disruptions yet
     events.start_outage(conn, "Pacific Pharma Supply", 10, "test")
     at.run()
-    assert at.button(key="bell_btn").label == ui.alerts_label(expiring_items + 1)
+    assert at.button(key="bell_btn").label == ui.notifications_label(expiring_items + 1)
     at.button(key="bell_btn").click().run()
-    assert not at.exception and at.session_state["page"] == "Recalls & disruptions"
+    assert not at.exception and at.session_state["page"] == "Recalls & disruptions"   # mixed: Alerts
 
 
 def outage_count(conn):
@@ -760,7 +760,7 @@ def test_the_bell_is_the_only_notification_badge(app):
     events.recall_lot(conn, lot, "II", "test")
     at.run()
     assert sidebar_badges(at) == [("bell_btn", "2")]              # one badge, on the bell, nothing on Alerts
-    assert at.button(key="bell_btn").label == "Open alerts, 2 active"
+    assert at.button(key="bell_btn").label == "Open notifications, 2 active"
 
 
 # ---------------------------------------------------------------------------
@@ -1245,3 +1245,141 @@ def test_dashboard_draft_button_still_opens_the_first_draft_without_a_filter(app
     at.button(key="prepare_drafts").click().run()
     assert at.session_state["page"] == "Purchasing"
     assert not at.session_state.get("po_stage") and "view" not in at.query_params
+
+
+# ---------------------------------------------------------------------------
+# Notification bell routing: expiry only -> Inventory > Expiring, otherwise Alerts
+# ---------------------------------------------------------------------------
+def no_expiring_stock(conn):
+    with conn:
+        conn.execute("UPDATE lots SET expiry_date = '2099-01-01'")
+
+
+def expiring_now(conn, n_items):
+    """Give n_items items a lot on the shelf that expires in 10 days; everything else far in the future."""
+    no_expiring_stock(conn)
+    soon = (db.today(conn) + timedelta(days=10)).isoformat()
+    ids = [r[0] for r in conn.execute("SELECT DISTINCT item_id FROM lots WHERE qty > 0 ORDER BY item_id")][:n_items]
+    with conn:
+        conn.executemany("UPDATE lots SET expiry_date = ? WHERE lot_id = (SELECT MIN(lot_id) FROM lots "
+                         "WHERE item_id = ? AND qty > 0)", [(soon, i) for i in ids])
+    return len(ids)
+
+
+def click_bell(at, conn):
+    """Press the bell and prove it only navigated."""
+    before = db_fingerprint(conn)
+    at.button(key="bell_btn").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert db_fingerprint(conn) == before                         # navigation never writes
+
+
+def expiring_quick_count(at):
+    import re
+    label = at.segmented_control(key="inv_quick").format_func("Expiring")
+    return int(re.search(r"\((\d+)\)", label).group(1))
+
+
+def test_bell_with_nothing_active_opens_alerts_without_a_badge(app):
+    at, conn = app
+    no_expiring_stock(conn)
+    at.run()
+    assert sidebar_badges(at) == []
+    assert at.button(key="bell_btn").label == "Open notifications, none active"
+    click_bell(at, conn)
+    assert at.session_state["page"] == "Recalls & disruptions"
+    assert at.query_params["page"] == "alerts" and "view" not in at.query_params
+    assert not any(b.key == "alerts_go_expiring" for b in at.main.button)
+
+
+def test_bell_with_only_expiring_stock_opens_inventory_expiring(app):
+    at, conn = app
+    count = expiring_now(conn, 3)
+    at.run()
+    assert sidebar_badges(at) == [("bell_btn", "3")]
+    assert at.button(key="bell_btn").label == "Open notifications, 3 active"
+    click_bell(at, conn)
+    assert at.session_state["page"] == "Inventory"
+    assert at.segmented_control(key="inv_quick").value == "Expiring"
+    assert at.query_params["page"] == "inventory" and at.query_params["view"] == "expiring"
+    assert expiring_quick_count(at) == showing_count(at) == count   # the bell's number is the list's number
+    assert at.text_input(key="inv_search").value == ""              # no other filter hides an item
+
+
+def test_bell_with_only_a_recall_opens_alerts(app):
+    import events
+    at, conn = app
+    no_expiring_stock(conn)
+    lot = conn.execute("SELECT lot_no FROM lots WHERE qty > 0 ORDER BY lot_id LIMIT 1").fetchone()[0]
+    events.recall_lot(conn, lot, "II", "test")
+    at.run()
+    assert at.button(key="bell_btn").label == "Open notifications, 1 active"
+    click_bell(at, conn)
+    assert at.session_state["page"] == "Recalls & disruptions"
+    assert at.query_params["page"] == "alerts" and "view" not in at.query_params
+    assert not any(b.key == "alerts_go_expiring" for b in at.main.button)   # nothing expiring to point to
+
+
+def test_bell_with_only_a_disruption_opens_alerts(app):
+    import events
+    at, conn = app
+    no_expiring_stock(conn)
+    events.start_outage(conn, "Pacific Pharma Supply", 10, "test")
+    at.run()
+    assert at.button(key="bell_btn").label == "Open notifications, 1 active"
+    click_bell(at, conn)
+    assert at.session_state["page"] == "Recalls & disruptions"
+    assert at.query_params["page"] == "alerts" and "view" not in at.query_params
+
+
+def test_bell_with_mixed_categories_opens_alerts_with_a_link_to_expiring_stock(app):
+    import events
+    at, conn = app
+    count = expiring_now(conn, 2)
+    events.start_outage(conn, "Pacific Pharma Supply", 10, "test")
+    at.run()
+    assert sidebar_badges(at) == [("bell_btn", "3")]               # still one red badge: 1 disruption + 2 items
+    click_bell(at, conn)
+    assert at.session_state["page"] == "Recalls & disruptions"
+    text = " ".join(m.value for m in at.main.markdown)
+    assert f"**{count} items** have stock expired or expiring within 30 days" in text
+    go = at.button(key="alerts_go_expiring")
+    assert go.label == f"Show {count} expiring items in Inventory"
+    before = db_fingerprint(conn)
+    go.click().run()
+    assert not at.exception and db_fingerprint(conn) == before
+    assert at.session_state["page"] == "Inventory"
+    assert at.query_params["page"] == "inventory" and at.query_params["view"] == "expiring"
+    assert expiring_quick_count(at) == showing_count(at) == count
+
+
+def test_bell_with_more_than_99_shows_99_plus_and_still_routes(app):
+    at, conn = app
+    count = expiring_now(conn, 150)
+    assert count > 99
+    at.run()
+    assert sidebar_badges(at) == [("bell_btn", "99+")]                     # the visual badge caps at 99+
+    assert at.button(key="bell_btn").label == f"Open notifications, {count} active"   # the exact count is spoken
+    click_bell(at, conn)
+    assert at.session_state["page"] == "Inventory" and at.query_params["view"] == "expiring"
+    assert expiring_quick_count(at) == count
+
+
+def test_bell_keeps_its_category_tooltip(app):
+    at, conn = app
+    help_text = at.button(key="bell_btn").help
+    for word in ("recent recall", "vendor disruption", "expiring within 30 days"):
+        assert word in help_text
+
+
+def test_expiring_view_and_bell_use_one_rule_for_recalled_lots(app):
+    import events
+    at, conn = app
+    count = expiring_now(conn, 3)
+    lot = conn.execute("SELECT lot_no FROM lots WHERE qty > 0 AND expiry_date < '2099-01-01' "
+                       "ORDER BY lot_id LIMIT 1").fetchone()[0]
+    events.recall_lot(conn, lot, "II", "test")                     # pulls one of the expiring lots
+    at.run()
+    open_page(at, "Inventory")
+    assert expiring_quick_count(at) == count - 1                   # a pulled lot is a recall, not expiring stock
+    assert at.button(key="bell_btn").label == f"Open notifications, {(count - 1) + 1} active"

@@ -193,6 +193,19 @@ RECENT_RECALL_DAYS = 14          # a recall stays an open alert for two weeks (s
 URGENT_EXPIRY_DAYS = 30          # same window as the Dashboard's "Expiring stock" alert
 
 
+def expiring_item_ids(lot_risk, recalls):
+    """Items with stock on the shelf that has expired or expires within 30 days. The one rule behind the
+    bell's expiry count and the Inventory "Expiring" quick view, so the two always show the same items.
+    Recalled lots are skipped (their stock is already pulled and counted as a recall), and so are empty lots."""
+    if not len(lot_risk):
+        return set()
+    recalled = set(recalls["lot_no"]) if len(recalls) else set()
+    lr = lot_risk[(lot_risk["days_left"] <= URGENT_EXPIRY_DAYS) & ~lot_risk["lot_no"].isin(recalled)]
+    if "qty" in lr:
+        lr = lr[lr["qty"] > 0]
+    return set(lr["item_id"])
+
+
 def alert_counts(recalls, outages, lot_risk, today):
     """Current actionable alerts, from data the app already has. Pure function (no database access).
 
@@ -212,11 +225,6 @@ def alert_counts(recalls, outages, lot_risk, today):
     n_recalls = recent["lot_no"].nunique() if len(recent) else 0
     active = outages[outages["state"].astype(str).str.endswith("Active")] if len(outages) else outages
     n_disruptions = active["supplier"].nunique() if len(active) else 0
-    recalled = set(recalls["lot_no"]) if len(recalls) else set()
-    lr = lot_risk[(lot_risk["days_left"] <= URGENT_EXPIRY_DAYS) & ~lot_risk["lot_no"].isin(recalled)] \
-        if len(lot_risk) else lot_risk
-    if len(lr) and "qty" in lr:
-        lr = lr[lr["qty"] > 0]
-    n_expiring = lr["item_id"].nunique() if len(lr) else 0
+    n_expiring = len(expiring_item_ids(lot_risk, recalls))
     return {"recalls": int(n_recalls), "disruptions": int(n_disruptions), "expiring": int(n_expiring),
             "total": int(n_recalls + n_disruptions + n_expiring)}
