@@ -95,10 +95,69 @@ def _rng(order_no):
 SPLIT_LOT_CHANCE = 0.3     # share of shipped lines that arrive as 2-3 lots from different production runs
 
 
-def _split_lots(order_no, line_no, qty, lot_no, expiry, arrive, vendor_code):
+def _lot_split_rng(order_no, line_no):
+    return np.random.default_rng(zlib.crc32(f"{order_no}/{line_no}/lots".encode()))
+
+
+class OrderNumberDraws:
+    """The normal vendor behavior: every random choice for an order comes from one generator seeded by
+    the order number (header first, then each line in order), and each line's lot split from its own
+    generator. send_order uses this unless it is given other draws."""
+
+    def __init__(self, order_no):
+        self.order_no = order_no
+        self.rng = _rng(order_no)
+
+    def header(self, supplier, on_date):
+        return self.rng
+
+    def line(self, supplier, item_id, on_date):
+        return self.rng                      # the same stream, so the draws keep their original order
+
+    def lots(self, supplier, item_id, on_date, line_no):
+        return _lot_split_rng(self.order_no, line_no)
+
+
+class PairedVendorDraws:
+    """Vendor behavior for scenario comparison only (scenarios.py). Each draw is keyed by business facts
+    instead of the order number:
+        header (lead time, tracking number)          seed, vendor, sent date
+        line (backorder, expiry, lot number)         seed, vendor, item, sent date
+        lot split                                    seed, vendor, item, sent date
+    So when two policies send the same vendor an order on the same day, the truck arrives on the same day,
+    and the same item from that vendor that day gets the same backorder and expiry draws. A key used twice
+    in one run raises an error, so that guarantee can never break silently. `keys` lists every key used."""
+
+    HEADER, LINE, LOTS = 0, 1, 2
+
+    def __init__(self, seed):
+        self.seed = int(seed)
+        self.keys = []
+        self._used = set()
+
+    def _rng(self, purpose, supplier, on_date, item_id=""):
+        key = (purpose, supplier, on_date.isoformat(), item_id)
+        if key in self._used:
+            raise db.StockError(f"Scenario vendor draw used twice: {key}")
+        self._used.add(key)
+        self.keys.append(key)
+        return np.random.default_rng([self.seed, zlib.crc32(supplier.encode()), on_date.toordinal(),
+                                      zlib.crc32(item_id.encode()), purpose])
+
+    def header(self, supplier, on_date):
+        return self._rng(self.HEADER, supplier, on_date)
+
+    def line(self, supplier, item_id, on_date):
+        return self._rng(self.LINE, supplier, on_date, item_id)
+
+    def lots(self, supplier, item_id, on_date, line_no):
+        return self._rng(self.LOTS, supplier, on_date, item_id)
+
+
+def _split_lots(order_no, line_no, qty, lot_no, expiry, arrive, vendor_code, rng=None):
     """How a shipped line is packed: usually one lot, sometimes two or three with different
     expiry dates. Uses its own random stream, so it never changes the vendor's other choices."""
-    rng = np.random.default_rng(zlib.crc32(f"{order_no}/{line_no}/lots".encode()))
+    rng = rng if rng is not None else _lot_split_rng(order_no, line_no)
     if qty < 10 or rng.random() >= SPLIT_LOT_CHANCE:
         return [(lot_no, expiry, int(qty))]
     k = 2 if qty < 40 or rng.random() < 0.7 else 3
@@ -299,7 +358,7 @@ def draft_suggested_orders(conn, plan, origin="Dashboard", on_date=None):
 # Sending: from here on the (simulated) vendor takes over
 # ---------------------------------------------------------------------------
 
-def send_order(conn, order_no, on_date=None):
+def send_order(conn, order_no, on_date=None, draws=None):
     """Approve and transmit a draft. The vendor's response is decided now (but revealed day by day):
 
     ack date      = sent + vendor's acknowledgement time
@@ -307,6 +366,9 @@ def send_order(conn, order_no, on_date=None):
     arrival date  = sent + random lead time ~ Normal(L, σL), at least 1 day
     ship date     = arrival - transit time
     ASN           = carrier, tracking number, lot number and expiry date per line
+
+    draws: where the random numbers come from. Normally None (OrderNumberDraws: seeded by the order
+    number). Scenario comparison passes PairedVendorDraws.
     """
     with db.atomic(conn):
         h = order_header(conn, order_no)
@@ -314,7 +376,8 @@ def send_order(conn, order_no, on_date=None):
             raise db.StockError(f"{order_no} was already sent")
         on_date = db._check_date(conn, on_date or db.today(conn))
         v = VENDORS[h["supplier"]]
-        rng = _rng(order_no)
+        draws = draws if draws is not None else OrderNumberDraws(order_no)
+        rng = draws.header(h["supplier"], on_date)
         lines = order_lines(conn, order_no)
         if lines.empty:
             raise db.StockError(f"{order_no} has no lines")
@@ -340,6 +403,7 @@ def send_order(conn, order_no, on_date=None):
              vendor_note, order_no))
         for line in lines.itertuples():
             item = db._get_item(conn, line.item_id)
+            rng = draws.line(h["supplier"], line.item_id, on_date)
             confirmed = line.qty
             if outage:
                 confirmed = 0
@@ -349,7 +413,9 @@ def send_order(conn, order_no, on_date=None):
             share = rng.uniform(0.15, 0.35) if rng.random() < 0.08 else rng.uniform(0.6, 0.95)
             expiry = arrive + timedelta(days=max(14, int(life * share)))
             lot_no = f"{v['code'][:2]}{arrive:%y}{rng.integers(10000, 99999)}"
-            lots = _split_lots(order_no, line.line_no, confirmed, lot_no, expiry, arrive, v["code"]) if confirmed else []
+            lots = (_split_lots(order_no, line.line_no, confirmed, lot_no, expiry, arrive, v["code"],
+                                draws.lots(h["supplier"], line.item_id, on_date, line.line_no))
+                    if confirmed else [])
             if lots:
                 lot_no, expiry = lots[0][0], lots[0][1]             # the single-lot columns hold the first lot
             conn.execute(

@@ -51,8 +51,11 @@ def next_arrival(conn):
 
 
 def advance(conn, days, service_levels=None, method="Auto", params=None,
-            auto_mode=AUTO_MODES[0], auto_receive=True, seed=None, random_events=False):
-    """Simulate `days` days. Returns a summary dict of what happened."""
+            auto_mode=AUTO_MODES[0], auto_receive=True, seed=None, random_events=False, vendor_draws=None):
+    """Simulate `days` days. Returns a summary dict of what happened.
+
+    vendor_draws: normally None (each order's story is seeded by its PO number). Scenario comparison
+    passes a purchasing.PairedVendorDraws so two policies meet the same vendor conditions."""
     start = db.today(conn)
     _, usage, *_ = db.load_frames(conn, start)
     week = weekday_factors(usage)
@@ -129,7 +132,7 @@ def advance(conn, days, service_levels=None, method="Auto", params=None,
                                        open_pos=open_pos, forecasts=shifted, as_of=day, lots=lots)
             for order_no in pu.draft_suggested_orders(conn, plan, origin="Auto", on_date=day):
                 if auto_mode == AUTO_MODES[2]:
-                    pu.send_order(conn, order_no, day)
+                    pu.send_order(conn, order_no, day, draws=vendor_draws)
                     report["sent"].append(order_no)
                 else:
                     report["drafted"].append(order_no)

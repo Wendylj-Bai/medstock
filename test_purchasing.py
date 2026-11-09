@@ -3,11 +3,13 @@ Tests for vendor purchase orders (purchasing.py) and the simulation clock (simul
 Each test uses a fresh temporary database, so your real data is never touched.
 """
 
+import hashlib
 from datetime import date, timedelta
 
 import pytest
 
 import db
+import events
 import planning
 import purchasing as pu
 import simulation as sim
@@ -186,3 +188,54 @@ def test_lot_split_does_not_change_the_vendors_other_choices(conn, monkeypatch):
         c.close()
         return out
     assert story(0.0) == story(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Golden run of the live vendor path. Recorded on the code BEFORE the vendor draws were moved behind
+# purchasing.OrderNumberDraws, so it proves that normal (non-scenario) orders tell exactly the same story
+# as before. If a numpy upgrade changes it, re-record it from unchanged code; never edit it to make it pass.
+# ---------------------------------------------------------------------------
+GOLDEN_TABLES = ["po_headers", "purchase_orders", "asn_lots", "lots", "deliveries", "transactions",
+                 "transaction_lots", "usage", "stockouts", "demand_requests", "vendor_outages", "recalls"]
+GOLDEN_FINGERPRINT = "565117e29c822dd9b9f6403fa1d56896e22eb28cba69f3dbc3f39a80fb3f80dd"
+
+
+def fingerprint(conn, tables=GOLDEN_TABLES):
+    """sha256 of every row of the given tables. transactions.created_at is the wall-clock time the row
+    was written, so it is left out."""
+    h = hashlib.sha256()
+    for t in tables:
+        cols = ", ".join(r[1] for r in conn.execute(f"PRAGMA table_info({t})") if r[1] != "created_at")
+        h.update(t.encode())
+        for row in sorted(repr(tuple(r)) for r in conn.execute(f"SELECT {cols} FROM {t}")):
+            h.update(row.encode())
+    return h.hexdigest()
+
+
+def test_live_vendor_path_matches_the_recorded_golden_run(conn):
+    start = date(2026, 11, 1)
+    db.set_today(conn, start)
+    # an outage that starts tomorrow: the manual OMI order is acknowledged during it and rejected
+    events.start_outage(conn, "Overseas Medical Imports", 10, "Golden test", on_date=start + timedelta(days=1))
+    rejected = pu.create_order(conn, "Overseas Medical Imports", [("CON004", 80), ("CON006", 30)])
+    pu.send_order(conn, rejected)
+    cascade = conn.execute("SELECT item_id FROM items WHERE supplier = 'Cascade Surgical Supply' "
+                           "ORDER BY item_id LIMIT 2").fetchall()
+    normal = pu.create_order(conn, "Cascade Surgical Supply", [(r[0], 60) for r in cascade])
+    pu.send_order(conn, normal)
+    sim.advance(conn, 30, auto_mode=sim.AUTO_MODES[2], seed=3, random_events=True)
+    assert pu.order_header(conn, rejected)["vendor_note"]                # the rejection path was exercised
+    assert conn.execute("SELECT COUNT(*) FROM asn_lots GROUP BY po_id HAVING COUNT(*) > 1").fetchone()  # and a split
+    assert fingerprint(conn) == GOLDEN_FINGERPRINT
+
+
+def test_default_vendor_draws_are_the_order_number_draws(tmp_path):
+    """send_order without draws behaves exactly like OrderNumberDraws for that order."""
+    stories = []
+    for name, explicit in (("a", False), ("b", True)):
+        c = db.connect(tmp_path / f"{name}.db")
+        o = pu.create_order(c, "Overseas Medical Imports", [("CON004", 80), ("CON006", 30)])
+        pu.send_order(c, o, draws=pu.OrderNumberDraws(o) if explicit else None)
+        stories.append(fingerprint(c, ["po_headers", "purchase_orders", "asn_lots"]))
+        c.close()
+    assert stories[0] == stories[1]

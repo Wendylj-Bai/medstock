@@ -157,3 +157,71 @@ def weekly(conn, start, end):
     df["fill_rate"] = 1 - df["short"] / df["demand"].where(df["demand"] > 0)
     df.index.name = "week"
     return df.reset_index()
+
+
+# ---------------------------------------------------------------------------
+# Separate money measures (used by scenario comparison). The period is first..end, both days included.
+# Values are US dollars at the item's standard cost (items.unit_cost) unless the docstring says otherwise.
+# Expired stock is never called waste here: only a write-off or a recall is a recorded loss.
+# ---------------------------------------------------------------------------
+
+def recorded_losses(conn, first, end):
+    """Stock value actually written off or pulled by a recall in the period (ledger rows)."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(CASE WHEN t.type = 'WRITE-OFF' THEN -t.qty * i.unit_cost END), 0), "
+        "       COALESCE(SUM(CASE WHEN t.type = 'RECALL' THEN -t.qty * i.unit_cost END), 0) "
+        "FROM transactions t JOIN items i USING (item_id) WHERE t.date BETWEEN ? AND ?",
+        (first.isoformat(), end.isoformat())).fetchone()
+    return {"write_off_value": float(row[0]), "recall_value": float(row[1]), "total": float(row[0] + row[1])}
+
+
+def ending_inventory(conn, first, end):
+    """Stock on the shelf at the end of `end`, split by whether it can still be used.
+
+    usable                    not expired at the end (expiry_date > end), the same rule as db.load_stock
+    newly_expired_baseline    expired during the period (first <= expiry_date <= end), received before it
+    newly_expired_received    expired during the period, received during it
+    expired_before            already expired before the period started (expiry_date < first)
+    book                      everything on the shelf; always the sum of the four parts above
+    Expired stock stays in the lots table until someone writes it off, so it is still book inventory.
+    """
+    f, e = first.isoformat(), end.isoformat()
+    row = conn.execute(
+        "SELECT COALESCE(SUM(CASE WHEN l.expiry_date > :e THEN v END), 0), "
+        "       COALESCE(SUM(CASE WHEN l.expiry_date BETWEEN :f AND :e AND l.received_date < :f THEN v END), 0), "
+        "       COALESCE(SUM(CASE WHEN l.expiry_date BETWEEN :f AND :e AND l.received_date >= :f THEN v END), 0), "
+        "       COALESCE(SUM(CASE WHEN l.expiry_date < :f THEN v END), 0), "
+        "       COALESCE(SUM(v), 0) "
+        "FROM (SELECT l.*, l.qty * i.unit_cost AS v FROM lots l JOIN items i USING (item_id) "
+        "      WHERE l.qty > 0 AND l.received_date <= :e) l", {"f": f, "e": e}).fetchone()
+    keys = ["usable", "newly_expired_baseline", "newly_expired_received", "expired_before", "book"]
+    out = {k: float(v) for k, v in zip(keys, row)}
+    out["newly_expired"] = out["newly_expired_baseline"] + out["newly_expired_received"]
+    return out
+
+
+def purchases_received(conn, first, end):
+    """Value of goods received in the period at the price on the PO line (so a backup vendor's premium
+    is included). Freight is not included; see freight_on_orders_sent."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(t.qty * p.unit_cost), 0), COALESCE(SUM(t.qty), 0) FROM transactions t "
+        "JOIN purchase_orders p ON p.item_id = t.item_id AND (p.order_no = t.reference OR p.po_id = t.reference) "
+        "WHERE t.type = 'RECEIVE' AND t.date BETWEEN ? AND ?", (first.isoformat(), end.isoformat())).fetchone()
+    return {"value": float(row[0]), "units": int(row[1])}
+
+
+def committed_open(conn, as_of):
+    """Ordered but not received at the end of `as_of`, at the PO line price. A line counts what the vendor
+    confirmed once it has acknowledged, otherwise what was ordered (the same rule as on-order stock)."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(MAX(0, CASE WHEN h.ack_date <= ? THEN COALESCE(p.confirmed_qty, p.qty) ELSE p.qty END "
+        "                               - COALESCE(p.received_qty, 0)) * p.unit_cost), 0) "
+        "FROM purchase_orders p LEFT JOIN po_headers h USING (order_no) WHERE p.status = 'OPEN'",
+        (as_of.isoformat(),)).fetchone()
+    return float(row[0])
+
+
+def freight_on_orders_sent(conn, first, end):
+    """Freight charged on orders sent in the period (po_headers.freight, set when the order is sent)."""
+    return float(conn.execute("SELECT COALESCE(SUM(freight), 0) FROM po_headers WHERE sent_date BETWEEN ? AND ?",
+                              (first.isoformat(), end.isoformat())).fetchone()[0])

@@ -434,3 +434,29 @@ Alerts does not list. Clicking a red "6" led to a page that showed none of the s
 had its own copy of the rule, which could drift apart. The destination is decided from the same counts the bell shows,
 and opening it is navigation only. Tests cover nothing active, each category alone, a mix and 99+, the
 address, matching counts and an unchanged database fingerprint.
+
+## 25. Scenario comparison engine (slice 1)
+
+**Date:** November 8, 2026
+
+**Built:** `scenarios.py` runs the same simulated period under two policies and compares them. Policy A
+is Vital 99%, Essential 95%, Desirable 90%; policy B changes the Vital level only. Both runs start from
+a frozen copy of the sample data, built in memory (the clock starts November 1, 2026), and run 7 to 60
+days with random recalls and outages off. `kpis.py` gained separate money measures: recorded write-offs
+and recalls, stock that expired during the period but is still on the shelf, usable and total book
+inventory at the end, purchases received at the PO price, orders not yet received, and freight. There
+is no page yet.
+
+**Problem:** Each vendor order's story is seeded by its PO number. Two policies number their orders
+differently, so in a test run 52 of 57 PO numbers pointed to different orders, and the two policies got
+different lead times, backorders and expiry dates. The live database was also a poor starting point: it
+is shared, changes, and its draft orders silently stop the simulation from reordering those items.
+
+**Decision:** Scenario runs use keyed vendor draws (`purchasing.PairedVendorDraws`): lead time is keyed by vendor and sent date, backorders, expiry and lots by vendor, item and sent date.
+Normal use is unchanged. I recorded a golden run of the old vendor code first, then moved its draws
+behind `OrderNumberDraws`, and the golden run still matches exactly. Every comparison checks itself:
+same requests, and identical vendor outcomes wherever both policies ordered alike, or the differences
+are withheld. The engine reports differences, and for several runs their mean, range and direction; it
+never names a preferred policy. In one 60-day run, policy B had fewer Vital stockouts than A, which is
+exactly why one run proves nothing. One 60-day pair takes about 41 seconds on my laptop. The full suite
+passed with 237 tests.

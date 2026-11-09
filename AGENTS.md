@@ -44,7 +44,7 @@ a fuller system through the owner's own research.
 ```bash
 python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt   # first time only
 .venv/bin/streamlit run app.py          # http://localhost:8501
-.venv/bin/python -m pytest -q           # 77 tests, about 100 seconds
+.venv/bin/python -m pytest -q           # 237 tests, about 5 to 6 minutes
 .venv/bin/python auth.py add <name>     # create a sign-in account (prints a line for secrets.toml)
 ```
 
@@ -84,6 +84,7 @@ app.py draws the screens; homepage.py and auth.py gate them
 | `events.py` | Recalls and vendor outages | `recall_lot`, `random_recall`, `start_outage`, `end_outage`, `random_outage` |
 | `kpis.py` | KPIs and weekly trends | `compute`, `weekly`, `inventory_value_by_day` |
 | `simulation.py` | The clock | `advance` |
+| `scenarios.py` | Scenario comparison: runs policy A (V 99%, E 95%, D 90%) and policy B (Vital changed only) on a frozen in-memory copy of the sample data, with paired demand and paired vendor draws (`purchasing.PairedVendorDraws`), and reports the differences without naming a preferred policy. Never opens a database file | `compare`, `build_baseline`, `measures`, `pairing_report`, `summarize` |
 | `auth.py` | Sign-in with salted PBKDF2 hashes from Streamlit secrets | `render_login`, `verify`, `hash_password` |
 | `homepage.py` | Public portfolio page (no database access) | `render_homepage` |
 | `app.py` | All screens: 12 pages plus the sidebar | |
@@ -182,7 +183,8 @@ In no fixed order, except that AI comes last:
 
 1. ~~Multi-lot receiving~~: done (November 3, 2026).
 2. **Scenario comparison:** run the same period with two policies (for example 95% vs 99% Vital
-   service level) and compare the KPIs side by side.
+   service level) and compare the KPIs side by side. Slice 1, the engine (`scenarios.py`), is built
+   (November 8, 2026). The Compare policies page is not built yet, so the feature is not in the app.
 3. **Multiple locations:** central storeroom plus ward supply rooms with par levels and transfers.
 4. **Plain-language rewrite** of `docs/USER_GUIDE.md` and `docs/HOW_IT_WORKS.md` (the homepage and
    README are done).
